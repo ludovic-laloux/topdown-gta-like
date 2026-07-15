@@ -3,11 +3,37 @@ import pygame, sys
 SCREEN_WIDTH = 1280
 SCREEN_HEIGHT = 720
 CAR_START_POS = (3275, 500)
+HESBAYE_GREEN = (120, 150, 80)
+
+
+
+# # Fresh spring crop field
+# (130, 170, 90)
+
+# # Grass pasture
+# (100, 140, 70)
+
+# # Darker realistic grass
+# (80, 120, 60)
+
+# # Dry summer field
+# (160, 170, 90)
+
+# # Very natural muted green
+# (110, 145, 85)
+
+# (0, 255, 0)     # pure bright green
+# (0, 100, 0)     # dark green
+# (120, 150, 80)  # natural grass
+
 
 class Car(pygame.sprite.Sprite):
     def __init__(self, pos):
         super().__init__()
-        self.original_image = pygame.image.load("Audi.png")
+        raw = pygame.image.load("Audi.png").convert_alpha()
+        # scale once, here — not every frame
+        w, h = raw.get_size()
+        self.original_image = pygame.transform.smoothscale(raw, (int(w * 0.7), int(h * 0.7)))
         self.image = self.original_image
         self.rect = self.image.get_rect(center = pos)
         self.angle = -90
@@ -22,7 +48,7 @@ class Car(pygame.sprite.Sprite):
         if self.direction == -1:
             self.angle += self.rotation_speed
 
-        self.image = pygame.transform.rotozoom(self.original_image, self.angle, 0.7)
+        self.image = pygame.transform.rotate(self.original_image, self.angle)
         self.rect = self.image.get_rect(center = self.rect.center)
 
     def get_rotation(self):
@@ -34,6 +60,7 @@ class Car(pygame.sprite.Sprite):
     def accelerate(self):
         if self.active:
             self.rect.center += self.forward * 6
+            self.rect.clamp_ip(pygame.Rect(0, 0, 6000, 4000))
 
     def update(self):
         self.set_rotation()
@@ -44,45 +71,50 @@ class CameraGroup(pygame.sprite.Group):
     def __init__(self):
         super().__init__()
         self.display_surface = pygame.display.get_surface()
+        self.world = pygame.Surface((6000, 4000))
+        self.world.fill(HESBAYE_GREEN)
+        self.world_rect = self.world.get_rect(topleft=(0,0))
+        # red border around world
+        pygame.draw.rect(self.world, "black", self.world.get_rect(), 20)
+
+        # test fields
+        pygame.draw.rect(self.world, (130,170,90), (500,300,800,600))
+        pygame.draw.rect(self.world, (100,140,70), (2000,1000,1000,700))
+
+        # test roads
+        pygame.draw.rect(self.world, (80,80,70), (3000,0,200,4000))
         
         # camera offset
         self.offset= pygame.math.Vector2(800, 100)
         self.half_w = self.display_surface.get_size()[0] // 2
         self.half_h = self.display_surface.get_size()[1] // 2
 
-        # Track
-        self.Track_surf = pygame.image.load("track.png").convert_alpha()
-        self.Track_surf = pygame.transform.smoothscale(self.Track_surf, (6000, 4000))
-        self.Track_rect = self.Track_surf.get_rect(topleft = (0, 0))
-
-
     def center_target_camera(self, target):
         self.offset.x = target.rect.centerx - self.half_w
         self.offset.y = target.rect.centery - self.half_h
 
+        self.offset.x = max(0, min(self.offset.x, self.world_rect.width - self.display_surface.get_width()))
+
+        self.offset.y = max(0, min(self.offset.y, self.world_rect.height - self.display_surface.get_height()))
+
     def custom_draw(self, player):
-        # clear the frame first
-        self.display_surface.fill((0, 0, 0))
-
+        # update camera first
         self.center_target_camera(player)
-        
-        # Track
-        Track_offset = self.Track_rect.topleft - self.offset
-        self.display_surface.blit(self.Track_surf, Track_offset)
 
-        # active elements
-        for sprite in sorted(self.sprites(), key = lambda sprite: sprite.rect.centery):
+        # draw world
+        world_offset = self.world_rect.topleft - self.offset
+        self.display_surface.blit(self.world, world_offset)
+
+        # draw sprites
+        for sprite in sorted(self.sprites(), key=lambda sprite: sprite.rect.centery):
             offset_position = sprite.rect.topleft - self.offset
-            self.display_surface.blit(sprite.image,offset_position)
+            self.display_surface.blit(sprite.image, offset_position)
 
 
 pygame.init()
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 pygame.mouse.set_visible(False)
 clock = pygame.time.Clock()
-bg_Track = pygame.image.load("Track.png")
-bg_Track = pygame.transform.rotozoom(bg_Track, 0, 1.2)
-bg_Track_rect = bg_Track.get_rect(center = ((SCREEN_WIDTH //2) + 25, (SCREEN_HEIGHT // 2) + 16))
 
 # setup
 camera_group = CameraGroup()
