@@ -2,7 +2,7 @@ import pygame, sys
 
 SCREEN_WIDTH = 1280
 SCREEN_HEIGHT = 720
-CAR_START_POS = (3275, 500)
+CAR_START_POS = (3100, 3900)
 HESBAYE_GREEN = (120, 150, 80)
 
 
@@ -36,11 +36,12 @@ class Car(pygame.sprite.Sprite):
         self.original_image = pygame.transform.smoothscale(raw, (int(w * 0.7), int(h * 0.7)))
         self.image = self.original_image
         self.rect = self.image.get_rect(center = pos)
-        self.angle = -90
+        self.angle = 0
         self.rotation_speed = 1.2
         self.direction = 0
-        self.forward = pygame.math.Vector2(1, 0)
+        self.forward = pygame.math.Vector2(0, -1)
         self.active = False
+        self.world_rect = pygame.Rect(0, 0, 6000, 4000)
 
     def set_rotation(self):
         if self.direction == 1:
@@ -59,8 +60,11 @@ class Car(pygame.sprite.Sprite):
 
     def accelerate(self):
         if self.active:
-            self.rect.center += self.forward * 6
-            self.rect.clamp_ip(pygame.Rect(0, 0, 6000, 4000))
+            new_rect = self.rect.copy()
+            new_rect.center += self.forward * 6
+
+            if self.world_rect.contains(new_rect):
+                self.rect = new_rect
 
     def update(self):
         self.set_rotation()
@@ -74,8 +78,6 @@ class CameraGroup(pygame.sprite.Group):
         self.world = pygame.Surface((6000, 4000))
         self.world.fill(HESBAYE_GREEN)
         self.world_rect = self.world.get_rect(topleft=(0,0))
-        # red border around world
-        pygame.draw.rect(self.world, "black", self.world.get_rect(), 20)
 
         # test fields
         pygame.draw.rect(self.world, (130,170,90), (500,300,800,600))
@@ -112,7 +114,7 @@ class CameraGroup(pygame.sprite.Group):
 
 
 pygame.init()
-screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+screen = pygame.display.set_mode((0, 0), pygame.NOFRAME)
 pygame.mouse.set_visible(False)
 clock = pygame.time.Clock()
 
