@@ -4,27 +4,7 @@ SCREEN_WIDTH = 1280
 SCREEN_HEIGHT = 720
 CAR_START_POS = (3100, 3900)
 HESBAYE_GREEN = (120, 150, 80)
-
-
-
-# # Fresh spring crop field
-# (130, 170, 90)
-
-# # Grass pasture
-# (100, 140, 70)
-
-# # Darker realistic grass
-# (80, 120, 60)
-
-# # Dry summer field
-# (160, 170, 90)
-
-# # Very natural muted green
-# (110, 145, 85)
-
-# (0, 255, 0)     # pure bright green
-# (0, 100, 0)     # dark green
-# (120, 150, 80)  # natural grass
+GRASS_PASTURE = (100, 140, 70)
 
 
 class Car(pygame.sprite.Sprite):
@@ -71,8 +51,18 @@ class Car(pygame.sprite.Sprite):
         self.get_rotation()
         self.accelerate()
 
+
 class CameraGroup(pygame.sprite.Group):
+    """
+    A sprite group that handles drawing the large world and moving the camera
+    so it follows a target object.
+    """
+
     def __init__(self):
+        """
+        Creates the camera group, the large world surface, and initializes
+        the camera position and screen dimensions.
+        """
         super().__init__()
         self.display_surface = pygame.display.get_surface()
         self.world = pygame.Surface((6000, 4000))
@@ -80,26 +70,42 @@ class CameraGroup(pygame.sprite.Group):
         self.world_rect = self.world.get_rect(topleft=(0,0))
 
         # test fields
-        pygame.draw.rect(self.world, (130,170,90), (500,300,800,600))
-        pygame.draw.rect(self.world, (100,140,70), (2000,1000,1000,700))
+        pygame.draw.rect(self.world, (130, 170, 90), (500,300,800,600))
+        pygame.draw.rect(self.world, (100, 140, 70), (2000,1000,1000,700))
+        pygame.draw.rect(self.world, (80, 120, 60), (3200,0,2800,800))
 
         # test roads
         pygame.draw.rect(self.world, (80,80,70), (3000,0,200,4000))
-        
+        pygame.draw.rect(self.world, (80,80,70), (3000,100,2800,200))
+        pygame.draw.rect(self.world, (80,80,70), (5700,100,200,3800))
+        pygame.draw.rect(self.world, (80,80,70), (3200,3700,2600,200))
+
         # camera offset
-        self.offset= pygame.math.Vector2(800, 100)
+        self.offset= pygame.math.Vector2(0, 0)
         self.half_w = self.display_surface.get_size()[0] // 2
         self.half_h = self.display_surface.get_size()[1] // 2
 
     def center_target_camera(self, target):
+        """
+        Moves the camera offset so that the target object stays centered
+        on the screen while preventing the camera from leaving the world boundaries.
+        """
         self.offset.x = target.rect.centerx - self.half_w
         self.offset.y = target.rect.centery - self.half_h
 
-        self.offset.x = max(0, min(self.offset.x, self.world_rect.width - self.display_surface.get_width()))
+        self.offset.x = max(
+            0, min(self.offset.x, self.world_rect.width - self.display_surface.get_width())
+            )
 
-        self.offset.y = max(0, min(self.offset.y, self.world_rect.height - self.display_surface.get_height()))
+        self.offset.y = max(
+            0, min(self.offset.y, self.world_rect.height - self.display_surface.get_height())
+            )
 
     def custom_draw(self, player):
+        """
+        Draws the world and all sprites with the camera offset applied.
+        The camera position is updated first so it follows the player.
+        """    
         # update camera first
         self.center_target_camera(player)
 
