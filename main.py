@@ -2,9 +2,8 @@ import pygame, sys
 
 SCREEN_WIDTH = 1280
 SCREEN_HEIGHT = 720
-CAR_START_POS = (3100, 3900)
+CAR_START_POS = (3320, 3900)
 HESBAYE_GREEN = (120, 150, 80)
-GRASS_PASTURE = (100, 140, 70)
 
 
 class Car(pygame.sprite.Sprite):
@@ -20,6 +19,12 @@ class Car(pygame.sprite.Sprite):
         self.rotation_speed = 1.2
         self.direction = 0
         self.forward = pygame.math.Vector2(0, -1)
+        
+        self.speed = 0
+        self.max_speed = 6
+        self.acceleration = 0.02
+        self.friction = 0.02
+
         self.active = False
         self.world_rect = pygame.Rect(0, 0, 6000, 4000)
 
@@ -40,11 +45,17 @@ class Car(pygame.sprite.Sprite):
 
     def accelerate(self):
         if self.active:
-            new_rect = self.rect.copy()
-            new_rect.center += self.forward * 6
+            self.speed += self.acceleration
+            self.speed = min(self.speed, self.max_speed)
+        else:
+            self.speed -= self.friction
+            self.speed = max(self.speed, 0)
 
-            if self.world_rect.contains(new_rect):
-                self.rect = new_rect
+        new_rect = self.rect.copy()
+        new_rect.center += self.forward * self.speed
+
+        if self.world_rect.contains(new_rect):
+            self.rect = new_rect
 
     def update(self):
         self.set_rotation()
@@ -75,10 +86,10 @@ class CameraGroup(pygame.sprite.Group):
         pygame.draw.rect(self.world, (80, 120, 60), (3200,0,2800,800))
 
         # test roads
-        pygame.draw.rect(self.world, (80,80,70), (3000,0,200,4000))
-        pygame.draw.rect(self.world, (80,80,70), (3000,100,2800,200))
-        pygame.draw.rect(self.world, (80,80,70), (5700,100,200,3800))
-        pygame.draw.rect(self.world, (80,80,70), (3200,3700,2600,200))
+        pygame.draw.rect(self.world, (80,80,70), (3000,0,400,4000))
+        pygame.draw.rect(self.world, (100,85,65), (3400,100,2400,300))
+        pygame.draw.rect(self.world, (100,85,65), (5500,100,300,3400))
+        pygame.draw.rect(self.world, (100,85,65), (3400,3200,2400,300))
 
         # camera offset
         self.offset= pygame.math.Vector2(0, 0)
@@ -120,7 +131,7 @@ class CameraGroup(pygame.sprite.Group):
 
 
 pygame.init()
-screen = pygame.display.set_mode((0, 0), pygame.NOFRAME)
+screen = pygame.display.set_mode((1280, 720), pygame.NOFRAME)
 pygame.mouse.set_visible(False)
 clock = pygame.time.Clock()
 
