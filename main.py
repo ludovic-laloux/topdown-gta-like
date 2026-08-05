@@ -7,7 +7,7 @@ HESBAYE_GREEN = (120, 150, 80)
 
 
 class Car(pygame.sprite.Sprite):
-    def __init__(self, pos):
+    def __init__(self, pos, obstacles):
         super().__init__()
         raw = pygame.image.load("Audi.png").convert_alpha()
         # scale once, here — not every frame
@@ -25,8 +25,11 @@ class Car(pygame.sprite.Sprite):
         self.acceleration = 0.02
         self.friction = 0.02
 
+        self.hitbox = self.rect.inflate(-160, -135)
+
         self.active = False
         self.world_rect = pygame.Rect(0, 0, 6000, 4000)
+        self.obstacles = obstacles
 
     def set_rotation(self):
         if self.direction == 1:
@@ -35,7 +38,7 @@ class Car(pygame.sprite.Sprite):
             self.angle += self.rotation_speed
 
         self.image = pygame.transform.rotate(self.original_image, self.angle)
-        self.rect = self.image.get_rect(center = self.rect.center)
+        self.rect = self.image.get_rect(center = self.hitbox.center)
 
     def get_rotation(self):
         if self.direction == 1:
@@ -51,11 +54,16 @@ class Car(pygame.sprite.Sprite):
             self.speed -= self.friction
             self.speed = max(self.speed, 0)
 
-        new_rect = self.rect.copy()
-        new_rect.center += self.forward * self.speed
+        new_hitbox = self.hitbox.copy()
+        new_hitbox.center += self.forward * self.speed
 
-        if self.world_rect.contains(new_rect):
-            self.rect = new_rect
+        for obstacle in self.obstacles:
+            if new_hitbox.colliderect(obstacle):
+                return
+
+        if self.world_rect.contains(new_hitbox):
+            self.hitbox = new_hitbox
+            self.rect.center = self.hitbox.center
 
     def update(self):
         self.set_rotation()
@@ -79,6 +87,15 @@ class CameraGroup(pygame.sprite.Group):
         self.world = pygame.Surface((6000, 4000))
         self.world.fill(HESBAYE_GREEN)
         self.world_rect = self.world.get_rect(topleft=(0,0))
+        
+        self.obstacles = [
+            pygame.Rect(2500, 400, 500, 500),
+            pygame.Rect(2500, 2700, 500, 500),
+            pygame.Rect(3500, 500, 100, 200),
+            pygame.Rect(4000, 500, 100, 200),
+            pygame.Rect(4500, 500, 100, 200),
+            pygame.Rect(5000, 500, 100, 200)
+        ]
 
         # test fields
         pygame.draw.rect(self.world, (130, 170, 90), (500,300,800,600))
@@ -90,6 +107,16 @@ class CameraGroup(pygame.sprite.Group):
         pygame.draw.rect(self.world, (100,85,65), (3400,100,2400,300))
         pygame.draw.rect(self.world, (100,85,65), (5500,100,300,3400))
         pygame.draw.rect(self.world, (100,85,65), (3400,3200,2400,300))
+
+        # test houses
+        pygame.draw.rect(self.world, (156,36,11),(2500,400,500,500))
+        pygame.draw.rect(self.world, (115,70,70),(2500,2700,500,500))
+
+        # test bales of straw
+        pygame.draw.rect(self.world, (219,192,0),(3500,500,100,200))
+        pygame.draw.rect(self.world, (219,192,0),(4000,500,100,200))
+        pygame.draw.rect(self.world, (219,192,0),(4500,500,100,200))
+        pygame.draw.rect(self.world, (219,192,0),(5000,500,100,200))
 
         # camera offset
         self.offset= pygame.math.Vector2(0, 0)
@@ -129,6 +156,14 @@ class CameraGroup(pygame.sprite.Group):
             offset_position = sprite.rect.topleft - self.offset
             self.display_surface.blit(sprite.image, offset_position)
 
+        pygame.draw.rect(
+            self.display_surface,
+            (255, 0, 0),
+            car.hitbox.move(-self.offset.x, -self.offset.y),
+            2
+        )
+
+
 
 pygame.init()
 screen = pygame.display.set_mode((1280, 720), pygame.NOFRAME)
@@ -137,7 +172,7 @@ clock = pygame.time.Clock()
 
 # setup
 camera_group = CameraGroup()
-car = Car(CAR_START_POS)
+car = Car(CAR_START_POS, camera_group.obstacles)
 camera_group.add(car)
 
 
@@ -157,9 +192,8 @@ while True:
             if event.key == pygame.K_LEFT: car.direction += 1
             if event.key == pygame.K_SPACE: car.active = False
 
-
-    camera_group.custom_draw(car)
-    camera_group.update()
+    camera_group.update()      # Move everything first
+    camera_group.custom_draw(car)  # Then draw the new positions
 
     pygame.display.update()
     clock.tick(120)
