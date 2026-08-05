@@ -7,7 +7,7 @@ HESBAYE_GREEN = (120, 150, 80)
 
 
 class Car(pygame.sprite.Sprite):
-    def __init__(self, pos, obstacles):
+    def __init__(self, pos, obstacles, roads):
         super().__init__()
         raw = pygame.image.load("Audi.png").convert_alpha()
         # scale once, here — not every frame
@@ -21,15 +21,19 @@ class Car(pygame.sprite.Sprite):
         self.forward = pygame.math.Vector2(0, -1)
         
         self.speed = 0
-        self.max_speed = 6
+        self.max_speed = 8
         self.acceleration = 0.02
         self.friction = 0.02
+        self.road_speed = 8
+        self.offroad_speed = 4
 
         self.hitbox = self.rect.inflate(-160, -135)
 
         self.active = False
         self.world_rect = pygame.Rect(0, 0, 6000, 4000)
+
         self.obstacles = obstacles
+        self.roads = roads
 
     def set_rotation(self):
         if self.direction == 1:
@@ -47,9 +51,14 @@ class Car(pygame.sprite.Sprite):
             self.forward.rotate_ip(-self.rotation_speed)
 
     def accelerate(self):
+        if self.check_road():
+            max_speed = self.road_speed
+        else:
+            max_speed = self.offroad_speed
+
         if self.active:
             self.speed += self.acceleration
-            self.speed = min(self.speed, self.max_speed)
+            self.speed = min(self.speed, max_speed)
         else:
             self.speed -= self.friction
             self.speed = max(self.speed, 0)
@@ -64,6 +73,12 @@ class Car(pygame.sprite.Sprite):
         if self.world_rect.contains(new_hitbox):
             self.hitbox = new_hitbox
             self.rect.center = self.hitbox.center
+
+    def check_road(self):
+        for road in self.roads:
+            if self.hitbox.colliderect(road):
+                return True
+        return False
 
     def update(self):
         self.set_rotation()
@@ -95,6 +110,13 @@ class CameraGroup(pygame.sprite.Group):
             pygame.Rect(4000, 500, 100, 200),
             pygame.Rect(4500, 500, 100, 200),
             pygame.Rect(5000, 500, 100, 200)
+        ]
+
+        self.roads = [
+            pygame.Rect(3000, 0, 400, 4000),
+            pygame.Rect(3400, 100, 2400, 300),
+            pygame.Rect(5500, 100, 300, 3400),
+            pygame.Rect(3400, 3200, 2400, 300)
         ]
 
         # test fields
@@ -172,7 +194,7 @@ clock = pygame.time.Clock()
 
 # setup
 camera_group = CameraGroup()
-car = Car(CAR_START_POS, camera_group.obstacles)
+car = Car(CAR_START_POS, camera_group.obstacles, camera_group.roads)
 camera_group.add(car)
 
 
