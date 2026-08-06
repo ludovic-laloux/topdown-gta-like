@@ -5,6 +5,56 @@ SCREEN_HEIGHT = 720
 CAR_START_POS = (3320, 3900)
 HESBAYE_GREEN = (120, 150, 80)
 
+class Player(pygame.sprite.Sprite):
+    def __init__(self, pos):
+        super().__init__()
+
+        self.image = pygame.Surface((30, 30), pygame.SRCALPHA)
+        pygame.draw.circle(self.image, (30, 30, 255), (15, 15), 15)
+        self.rect = self.image.get_rect(center=pos)
+
+        self.direction = pygame.Vector2()
+        self.speed = 3
+
+        self.in_car = False
+
+    def input(self):
+        keys = pygame.key.get_pressed()
+
+        self.direction.x = 0
+        self.direction.y = 0
+
+
+        # left: AZERTY Q / QWERTY A
+        if keys[pygame.K_q] or keys[pygame.K_a]:
+            self.direction.x = -1
+
+        # right: D on both layouts
+        if keys[pygame.K_d]:
+            self.direction.x = 1
+
+        # up: AZERTY Z / QWERTY W
+        if keys[pygame.K_z] or keys[pygame.K_w]:
+            self.direction.y = -1
+
+        # down: S on both layouts
+        if keys[pygame.K_s]:
+            self.direction.y = 1
+
+    def move(self):
+        if self.direction.length() > 0:
+            self.direction = self.direction.normalize()
+
+        self.rect.center += self.direction * self.speed
+
+    def update(self, car=None):
+
+        if self.in_car:
+            self.rect.center = car.rect.center
+
+        else:
+            self.input()
+            self.move()
 
 class Car(pygame.sprite.Sprite):
     def __init__(self, pos, obstacles, roads):
@@ -34,6 +84,8 @@ class Car(pygame.sprite.Sprite):
 
         self.obstacles = obstacles
         self.roads = roads
+
+        self.driver_offset = pygame.Vector2(0, 0)
 
     def set_rotation(self):
         if self.direction == 1:
@@ -186,7 +238,6 @@ class CameraGroup(pygame.sprite.Group):
         )
 
 
-
 pygame.init()
 screen = pygame.display.set_mode((1280, 720), pygame.NOFRAME)
 pygame.mouse.set_visible(False)
@@ -194,8 +245,14 @@ clock = pygame.time.Clock()
 
 # setup
 camera_group = CameraGroup()
+
 car = Car(CAR_START_POS, camera_group.obstacles, camera_group.roads)
+player = Player((CAR_START_POS[0] + 80, CAR_START_POS[1]))
+
 camera_group.add(car)
+camera_group.add(player)
+
+camera_target = player
 
 
 while True:
@@ -214,8 +271,29 @@ while True:
             if event.key == pygame.K_LEFT: car.direction += 1
             if event.key == pygame.K_SPACE: car.active = False
 
-    camera_group.update()      # Move everything first
-    camera_group.custom_draw(car)  # Then draw the new positions
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_e:
+
+                # ENTER CAR
+                if not player.in_car:
+                    if player.rect.colliderect(car.rect.inflate(50, 50)):
+                        player.in_car = True
+                        player.kill()
+                        camera_target = car
+
+                # EXIT CAR
+                else:
+                    player.in_car = False
+                    player.rect.center = (car.rect.centerx + 60, car.rect.centery)
+                    camera_group.add(player)
+                    car.active = False
+                    camera_target = player
+
+    # camera_group.update()
+    car.update()
+    player.update(car)
+
+    camera_group.custom_draw(camera_target)
 
     pygame.display.update()
     clock.tick(120)
