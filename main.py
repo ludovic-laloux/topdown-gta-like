@@ -97,20 +97,27 @@ class Player(pygame.sprite.Sprite):
         if keys[pygame.K_s]:
             self.direction.y = 1
 
-    def move(self):
+    def move(self, cars):
         if self.direction.length() > 0:
             self.direction = self.direction.normalize()
 
-        self.rect.center += self.direction * self.speed
+        new_rect = self.rect.copy()
+        new_rect.center += self.direction * self.speed
 
-    def update(self):
+        for car in cars:
+            if new_rect.colliderect(car.hitbox):
+                return
+
+        self.rect = new_rect
+
+    def update(self, cars):
 
         if self.in_car:
             self.rect.center = self.current_car.rect.center
 
         else:
             self.input()
-            self.move()
+            self.move(cars)
 
 class Car(pygame.sprite.Sprite):
     def __init__(self, pos, world, image_path, hitbox_inflate,road_speed, offroad_speed):
@@ -268,7 +275,8 @@ camera_group = CameraGroup(world)
 cars = [
     Car(CAR_START_POS, world, "Audi.png", (-160, -135), 32, 16),
     Car((4000, 3000), world, "Audi.png", (-160, -135), 32, 16),
-    Car((4500, 3000), world, "Offroad.png", (-20, -20), 28, 28)
+    Car((4500, 3000), world, "Offroad.png", (-20, -20), 28, 28),
+    Car((5000, 3000), world, "buggy.png", (-20, -20), 40, 40)
 ]
 
 player = Player((CAR_START_POS[0] + 80, CAR_START_POS[1]))
@@ -331,7 +339,7 @@ while True:
     for car in cars:
         car.update(cars)
 
-    player.update()
+    player.update(cars)
 
     camera_group.custom_draw(camera_target)
 
