@@ -73,13 +73,13 @@ class Player(pygame.sprite.Sprite):
         self.speed = 3
 
         self.in_car = False
+        self.current_car = None
 
     def input(self):
         keys = pygame.key.get_pressed()
 
         self.direction.x = 0
         self.direction.y = 0
-
 
         # left: AZERTY Q / QWERTY A
         if keys[pygame.K_q] or keys[pygame.K_a]:
@@ -103,10 +103,10 @@ class Player(pygame.sprite.Sprite):
 
         self.rect.center += self.direction * self.speed
 
-    def update(self, car):
+    def update(self):
 
         if self.in_car:
-            self.rect.center = car.rect.center
+            self.rect.center = self.current_car.rect.center
 
         else:
             self.input()
@@ -137,8 +137,6 @@ class Car(pygame.sprite.Sprite):
         self.active = False
 
         self.world = world
-
-        self.has_driver = False
 
     def set_rotation(self):
         if self.speed > 0:
@@ -252,10 +250,16 @@ clock = pygame.time.Clock()
 world = World()
 camera_group = CameraGroup(world)
 
-car = Car(CAR_START_POS, world)
+cars = [
+    Car(CAR_START_POS, world),
+    Car((4000, 3000), world)
+]
+
 player = Player((CAR_START_POS[0] + 80, CAR_START_POS[1]))
 
-camera_group.add(car)
+for car in cars:
+    camera_group.add(car)
+
 camera_group.add(player)
 
 camera_target = player
@@ -268,13 +272,15 @@ while True:
             sys.exit()
 
         if event.type == pygame.KEYDOWN:
-            if car.has_driver:
+            if player.current_car:
+                car = player.current_car
                 if event.key == pygame.K_RIGHT: car.direction += 1
                 if event.key == pygame.K_LEFT: car.direction -= 1
                 if event.key == pygame.K_SPACE: car.active = True
 
         if event.type == pygame.KEYUP:
-            if car.has_driver:
+            if player.current_car:
+                car = player.current_car
                 if event.key == pygame.K_RIGHT: car.direction -= 1
                 if event.key == pygame.K_LEFT: car.direction += 1
                 if event.key == pygame.K_SPACE: car.active = False
@@ -284,27 +290,32 @@ while True:
 
                 # ENTER CAR
                 if not player.in_car:
-                    if player.rect.colliderect(car.rect.inflate(50, 50)):
-                        player.in_car = True
-                        car.has_driver = True
-                        player.kill()
-                        camera_target = car
-
+                    for car in cars:
+                        if player.rect.colliderect(car.rect.inflate(50, 50)):
+                            player.in_car = True
+                            player.current_car = car
+                            player.kill()
+                            camera_target = car
+                            break
+                        
                 # EXIT CAR
                 else:
-                    player.in_car = False
-                    car.has_driver = False
+                    car = player.current_car
 
+                    player.in_car = False
                     car.direction = 0
                     car.active = False
 
                     player.rect.center = (car.rect.centerx + 60, car.rect.centery)
+
                     camera_group.add(player)
                     camera_target = player
+                    player.current_car = None
 
-    # camera_group.update()
-    car.update()
-    player.update(car)
+    for car in cars:
+        car.update()
+
+    player.update()
 
     camera_group.custom_draw(camera_target)
 
