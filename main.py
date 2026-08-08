@@ -151,7 +151,7 @@ class Car(pygame.sprite.Sprite):
     def get_rotation(self):
         self.forward = pygame.Vector2(0, -1).rotate(-self.angle)
 
-    def accelerate(self):
+    def accelerate(self, cars):
         if self.check_road():
             max_speed = self.road_speed
         else:
@@ -171,6 +171,10 @@ class Car(pygame.sprite.Sprite):
             if new_hitbox.colliderect(obstacle):
                 return
 
+        for car in cars:
+            if car != self and new_hitbox.colliderect(car.hitbox):
+                return
+
         if self.world.rect.contains(new_hitbox):
             self.hitbox = new_hitbox
             self.rect.center = self.hitbox.center
@@ -181,8 +185,8 @@ class Car(pygame.sprite.Sprite):
                 return True
         return False
 
-    def update(self):
-        self.accelerate()
+    def update(self,cars):
+        self.accelerate(cars)
         self.set_rotation()
         self.get_rotation()
 
@@ -313,7 +317,7 @@ while True:
                     player.current_car = None
 
     for car in cars:
-        car.update()
+        car.update(cars)
 
     player.update()
 
