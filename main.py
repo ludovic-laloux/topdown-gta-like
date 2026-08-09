@@ -225,12 +225,9 @@ class CameraGroup(pygame.sprite.Group):
 
         # Prevent camera from leaving the world
         self.offset.x = max(
-            0,
-            min(
-                self.offset.x,
-                self.world.rect.width - self.display_surface.get_width() / ZOOM
-            )
-        )
+            0,min(
+                self.offset.x, self.world.rect.width - self.display_surface.get_width() / ZOOM)
+                )
 
         self.offset.y = max(
             0,
@@ -245,15 +242,10 @@ class CameraGroup(pygame.sprite.Group):
 
         world_offset = -self.offset * ZOOM
 
-        self.display_surface.blit(
-            self.world.scaled_surface,
-            world_offset
-        )
+        self.display_surface.blit(self.world.scaled_surface, world_offset)
 
-        for sprite in sorted(
-            self.sprites(),
-            key=lambda sprite: sprite.rect.centery
-        ):
+        for sprite in sorted(self.sprites(), key=lambda sprite: sprite.rect.centery):
+            
             scaled_image = pygame.transform.scale(
                 sprite.image,
                 (
@@ -286,7 +278,7 @@ cars = [
     Car((4000, 3000), world, "Audi.png", (-160, -135), 900, 500),
     Car((4500, 3000), world, "Offroad.png", (-20, -20), 700, 700),
     Car((5000, 3000), world, "buggy.png", (-20, -20), 1200, 1200),
-    Car((2900, 3300), world, "tractor.png", (-20, -20), 400, 400)
+    Car((2900, 3300), world, "tractor.png", (-50, -50), 400, 400)
 ]
 
 player = Player((CAR_START_POS[0] + 80, CAR_START_POS[1]))
@@ -325,15 +317,25 @@ while True:
             if event.key == pygame.K_e:
 
                 # ENTER CAR
+                ENTER_DISTANCE = 100
+
                 if not player.in_car:
+                    closest_car = None
+                    closest_distance = ENTER_DISTANCE
+
                     for car in cars:
-                        if player.rect.colliderect(car.rect.inflate(50, 50)):
-                            player.in_car = True
-                            player.current_car = car
-                            player.kill()
-                            camera_target = car
-                            break
-                        
+                        distance = pygame.math.Vector2(player.rect.center).distance_to(car.rect.center)
+
+                        if distance < closest_distance:
+                            closest_distance = distance
+                            closest_car = car
+
+                    if closest_car:
+                        player.in_car = True
+                        player.current_car = closest_car
+                        player.kill()
+                        camera_target = closest_car
+
                 # EXIT CAR
                 else:
                     car = player.current_car
@@ -342,7 +344,10 @@ while True:
                     car.direction = 0
                     car.active = False
 
-                    player.rect.center = (car.rect.centerx + 60, car.rect.centery)
+                    player.rect.center = (
+                        car.hitbox.right + player.rect.width // 2,
+                        car.hitbox.centery
+                    )
 
                     camera_group.add(player)
                     camera_target = player
