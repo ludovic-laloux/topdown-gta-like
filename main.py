@@ -264,14 +264,130 @@ class CameraGroup(pygame.sprite.Group):
                 position
             )
 
+class Mission:
+    def __init__(self):
+        self.number = 1
+        self.completed = False
+        self.completion_time = 0
+
+        # Destination in world coordinates
+        self.destination = pygame.Rect(4200, 2500, 200, 200)
+        self.destination2 = pygame.Rect(5000, 1500, 200, 200)
+
+        # Used to pause between missions
+        self.complete_timer = 0
+
+    def update(self, player, dt):
+
+        # -------------------------
+        # MISSION 1
+        # -------------------------
+        if self.number == 1:
+
+            # Must be driving a car
+            if player.in_car:
+                car = player.current_car
+
+                if not self.completed and car.hitbox.colliderect(self.destination):
+                    self.completed = True
+                    self.completion_time = pygame.time.get_ticks()
+                    self.complete_timer = 2
+        # -------------------------
+        # WAIT AFTER MISSION 1
+        # -------------------------
+        elif self.number == 2:
+
+            # Must be on foot
+            if not player.in_car:
+
+                if not self.completed and player.rect.colliderect(self.destination2):
+                    self.completed = True
+                    self.completion_time = pygame.time.get_ticks()
+                    self.complete_timer = 2
+
+        # Countdown after completing mission
+        if self.completed:
+            self.complete_timer -= dt
+
+            if self.complete_timer <= 0:
+                self.completed = False
+                self.number += 1
+
+    def draw(self, surface, camera):
+
+        if not self.completed:
+
+            if self.number == 1:
+                destination = self.destination
+
+            elif self.number == 2:
+                destination = self.destination2
+
+            else:
+                return
+            
+            position = (
+                destination.x * ZOOM - camera.offset.x * ZOOM,
+                destination.y * ZOOM - camera.offset.y * ZOOM
+            )
+
+            size = (
+                int(destination.width * ZOOM),
+                int(destination.height * ZOOM)
+            )
+
+            pygame.draw.rect(
+                surface,
+                (255, 255, 0),
+                (*position, *size),
+                5
+            )
+
+    def draw_ui(self, surface):
+
+        if self.completed:
+
+            elapsed = pygame.time.get_ticks() - self.completion_time
+
+            if elapsed < 2000:
+                text = font.render(
+                    "MISSION COMPLETE!",
+                    True,
+                    (255, 255, 255)
+                )
+
+                surface.blit(text, (30, 30))
+
+        else:
+
+            if self.number == 1:
+                message = "MISSION 1: Drive to the marked location"
+
+            elif self.number == 2:
+                message = "MISSION 2: Get out and walk to the marked location"
+
+            else:
+                return
+
+            text = font.render(
+                message,
+                True,
+                (255, 255, 255)
+            )
+
+            surface.blit(text, (30, 30))
+
 pygame.init()
+font = pygame.font.Font(None, 40)
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.NOFRAME)
 pygame.mouse.set_visible(False)
 clock = pygame.time.Clock()
 
 # setup
+font = pygame.font.Font(None, 40)
 world = World()
 camera_group = CameraGroup(world)
+mission = Mission()
 
 cars = [
     Car(CAR_START_POS, world, "Audi.png", (-160, -135), 900, 500),
@@ -357,7 +473,7 @@ while True:
                     car.active = False
 
                     player.rect.center = (
-                        car.hitbox.right + player.rect.width // 2,
+                        car.hitbox.right + player.rect.width + 80,
                         car.hitbox.centery
                     )
 
@@ -370,6 +486,11 @@ while True:
 
     player.update(cars, dt)
 
+    mission.update(player, dt)
+
     camera_group.custom_draw(camera_target)
+
+    mission.draw(screen, camera_group)
+    mission.draw_ui(screen)
 
     pygame.display.update()
