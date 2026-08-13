@@ -279,7 +279,13 @@ cars = [
     Car((4500, 3000), world, "Offroad.png", (-20, -20), 700, 700),
     Car((5000, 3000), world, "buggy.png", (-20, -20), 1200, 1200),
     Car((2900, 3300), world, "tractor.png", (-50, -50), 400, 400),
-    Car((2900, 1000), world, "Jeep.png", (-60,-60), 700, 700)
+    Car((2900, 1000), world, "Jeep.png", (-60,-60), 700, 700),
+    Car((2700, 1000), world, "bouboul.png", (-20, -20), 500, 200),
+    Car((3430,2500), world, "audi_v2.png", (-20, -20), 900, 500),
+    Car((3430,2300), world, "audi_v3.png", (-20, -20), 900, 500),
+    Car((3430,2100), world, "circle_car.png", (-20, -20), 900, 500)
+
+
 ]
 
 player = Player((CAR_START_POS[0] + 80, CAR_START_POS[1]))
