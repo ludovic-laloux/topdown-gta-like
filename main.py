@@ -278,7 +278,8 @@ cars = [
     Car((4000, 3000), world, "Audi.png", (-160, -135), 900, 500),
     Car((4500, 3000), world, "Offroad.png", (-20, -20), 700, 700),
     Car((5000, 3000), world, "buggy.png", (-20, -20), 1200, 1200),
-    Car((2900, 3300), world, "tractor.png", (-50, -50), 400, 400)
+    Car((2900, 3300), world, "tractor.png", (-50, -50), 400, 400),
+    Car((2900, 1000), world, "Jeep.png", (-60,-60), 700, 700)
 ]
 
 player = Player((CAR_START_POS[0] + 80, CAR_START_POS[1]))
@@ -298,6 +299,11 @@ while True:
         if event.type == pygame.QUIT:
             pygame.quit()
             sys.exit()
+
+        if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        pygame.quit()
+                        sys.exit()
 
         if event.type == pygame.KEYDOWN:
             if player.current_car:
