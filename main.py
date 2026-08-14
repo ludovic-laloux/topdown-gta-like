@@ -70,62 +70,172 @@ class World:
             pygame.draw.rect(self.surface, ROAD_COLOR, road)
 
 class Player(pygame.sprite.Sprite):
-    def __init__(self, pos):
+    def __init__(self, pos, world):
         super().__init__()
 
-        self.image = pygame.Surface((30, 30), pygame.SRCALPHA)
-        pygame.draw.circle(self.image, (30, 30, 255), (15, 15), 15)
+        self.world = world
+
+        # -------------------------
+        # LOAD SPRITE SHEET
+        # -------------------------
+        sheet = pygame.image.load(
+            "graphics/player.png"
+        ).convert_alpha()
+
+        self.frames = {
+            "down": [],
+            "up": [],
+            "left": [],
+            "right": []
+        }
+
+        directions = ["down", "up", "left", "right"]
+
+        for row, direction in enumerate(directions):
+
+            for col in range(4):
+
+                frame = sheet.subsurface(
+                    pygame.Rect(
+                        col * 32,
+                        row * 32,
+                        32,
+                        32
+                    )
+                )
+
+                # Scale the 32×32 frame
+                frame = pygame.transform.scale(frame, (64, 64))
+
+                self.frames[direction].append(frame)
+        # -------------------------
+        # PLAYER STATE
+        # -------------------------
+
+        self.direction = "down"
+
+        self.frame_index = 0
+        self.animation_timer = 0
+
+        self.image = self.frames["down"][0]
         self.rect = self.image.get_rect(center=pos)
 
-        self.direction = pygame.Vector2()
-        self.speed = 400
+        # 300 pixels/second is roughly
+        # equivalent to your old 3 pixels/frame
+        # when running around 100 FPS.
+        self.speed = 360
+
+        self.movement = pygame.Vector2()
 
         self.in_car = False
         self.current_car = None
 
     def input(self):
+
         keys = pygame.key.get_pressed()
 
-        self.direction.x = 0
-        self.direction.y = 0
+        self.movement.x = 0
+        self.movement.y = 0
 
-        # left: AZERTY Q / QWERTY A
+        # LEFT
         if keys[pygame.K_q] or keys[pygame.K_a]:
-            self.direction.x = -1
+            self.movement.x -= 1
 
-        # right: D on both layouts
+        # RIGHT
         if keys[pygame.K_d]:
-            self.direction.x = 1
+            self.movement.x += 1
 
-        # up: AZERTY Z / QWERTY W
+        # UP
         if keys[pygame.K_z] or keys[pygame.K_w]:
-            self.direction.y = -1
+            self.movement.y -= 1
 
-        # down: S on both layouts
+        # DOWN
         if keys[pygame.K_s]:
-            self.direction.y = 1
+            self.movement.y += 1
 
     def move(self, cars, dt):
-        if self.direction.length() > 0:
-            self.direction = self.direction.normalize()
+
+        if self.movement.length() > 0:
+            self.movement = self.movement.normalize()
 
         new_rect = self.rect.copy()
-        new_rect.center += self.direction * self.speed * dt
 
+        new_rect.center += (
+            self.movement * self.speed * dt
+        )
+
+        # Don't walk through cars
         for car in cars:
+
             if new_rect.colliderect(car.hitbox):
                 return
 
+        # Don't leave the world
+        if not self.world.rect.contains(new_rect):
+            return
+
         self.rect = new_rect
+
+    def animate(self, dt):
+
+        # -------------------------
+        # NOT WALKING
+        # -------------------------
+
+        if self.movement.length() == 0:
+
+            self.frame_index = 0
+
+            self.image = self.frames[
+                self.direction
+            ][0]
+
+            return
+
+        # -------------------------
+        # WALKING
+        # -------------------------
+
+        self.animation_timer += dt
+
+        if self.animation_timer >= 0.12:
+
+            self.animation_timer = 0
+
+            self.frame_index += 1
+
+            if self.frame_index >= 4:
+                self.frame_index = 0
+
+        self.image = self.frames[
+            self.direction
+        ][self.frame_index]
 
     def update(self, cars, dt):
 
+        # Player is hidden while inside a car
         if self.in_car:
-            self.rect.center = self.current_car.rect.center
+            return
 
-        else:
-            self.input()
-            self.move(cars, dt)
+        self.input()
+
+        # Determine which direction the
+        # character is facing.
+        if self.movement.x < 0:
+            self.direction = "left"
+
+        elif self.movement.x > 0:
+            self.direction = "right"
+
+        elif self.movement.y < 0:
+            self.direction = "up"
+
+        elif self.movement.y > 0:
+            self.direction = "down"
+
+        self.move(cars, dt)
+
+        self.animate(dt)
 
 class Car(pygame.sprite.Sprite):
     def __init__(self, pos, world, image_path, hitbox_inflate,road_speed, offroad_speed):
@@ -390,21 +500,21 @@ camera_group = CameraGroup(world)
 mission = Mission()
 
 cars = [
-    Car(CAR_START_POS, world, "Audi.png", (-160, -135), 900, 500),
-    Car((4000, 3000), world, "Audi.png", (-160, -135), 900, 500),
-    Car((4500, 3000), world, "Offroad.png", (-20, -20), 700, 700),
-    Car((5000, 3000), world, "buggy.png", (-20, -20), 1200, 1200),
-    Car((2900, 3300), world, "tractor.png", (-50, -50), 400, 400),
-    Car((2900, 1000), world, "Jeep.png", (-60,-60), 700, 700),
-    Car((2700, 1000), world, "bouboul.png", (-20, -20), 500, 200),
-    Car((3430,2500), world, "audi_v2.png", (-20, -20), 900, 500),
-    Car((3430,2300), world, "audi_v3.png", (-20, -20), 900, 500),
-    Car((3430,2100), world, "circle_car.png", (-20, -20), 900, 500)
+    Car(CAR_START_POS, world, "graphics/Audi.png", (-160, -135), 900, 500),
+    Car((4000, 3000), world, "graphics/Audi.png", (-160, -135), 900, 500),
+    Car((4500, 3000), world, "graphics/Offroad.png", (-20, -20), 700, 700),
+    Car((5000, 3000), world, "graphics/buggy.png", (-20, -20), 1200, 1200),
+    Car((2900, 3300), world, "graphics/tractor.png", (-50, -50), 400, 400),
+    Car((2900, 1000), world, "graphics/Jeep.png", (-60,-60), 700, 700),
+    Car((2700, 1000), world, "graphics/bouboul.png", (-20, -20), 500, 200),
+    Car((3430,2500), world, "graphics/audi_v2.png", (-20, -20), 900, 500),
+    Car((3430,2300), world, "graphics/audi_v3.png", (-20, -20), 900, 500),
+    Car((3430,2100), world, "graphics/circle_car.png", (-20, -20), 900, 500)
 
 
 ]
 
-player = Player((CAR_START_POS[0] + 80, CAR_START_POS[1]))
+player = Player((CAR_START_POS[0] + 80, CAR_START_POS[1]), world)
 
 for car in cars:
     camera_group.add(car)
