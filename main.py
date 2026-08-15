@@ -536,25 +536,25 @@ camera_group = CameraGroup(world)
 mission = Mission()
 
 #vehicule setup
-buggy = pygame.image.load("graphics/buggy.png").convert_alpha()
-buggy = pygame.transform.rotate(buggy, 180)
+buggy = "graphics/buggy/buggy.png"
+buggy_driver = "graphics/buggy/buggy_with_player.png"
 
 tractor = "graphics/tractor/tractor.png"
 tractor_driver = "graphics/tractor/tractor_with_player.png"
 
+
 cars = [
     Car(CAR_START_POS, world, "graphics/Audi.png", (-20, -20), 1000, 500),
     Car((4000, 3000), world, "graphics/Audi.png", (-20, -20), 900, 500),
-    Car((5000, 3000), world, buggy, (-50, -50), 1200, 1200),
+    Car((5000,3000), world, buggy, (-50, -50), 1200, 1200, buggy_driver),
     Car((2900, 3300), world, tractor, (-100, -100), 400, 400, tractor_driver),
     Car((2900, 1000), world, "graphics/Jeep.png", (-60,-60), 1000, 1000),
     Car((2700, 1000), world, "graphics/bouboul.png", (-20, -20), 600, 200),
     Car((3430,2500), world, "graphics/audi_v2.png", (-20, -20), 900, 500),
     Car((3430,2300), world, "graphics/audi_v3.png", (-20, -20), 900, 500),
-    Car((3430,2100), world, "graphics/circle_car.png", (-20, -20), 900, 500)
-
-
+    Car((3430,2100), world, "graphics/circlus.png", (-20, -20), 900, 500)
 ]
+
 
 player = Player((CAR_START_POS[0] + 80, CAR_START_POS[1]), world)
 
