@@ -238,12 +238,37 @@ class Player(pygame.sprite.Sprite):
         self.animate(dt)
 
 class Car(pygame.sprite.Sprite):
-    def __init__(self, pos, world, image_path, hitbox_inflate,road_speed, offroad_speed):
+    def __init__(
+            self, pos, world, image_path, hitbox_inflate, road_speed, offroad_speed, driver_image_path=None
+            ):
         super().__init__()
-        raw = pygame.image.load(image_path).convert_alpha()
-        # scale once, here — not every frame
-        w, h = raw.get_size()
-        self.original_image = pygame.transform.smoothscale(raw, (int(w * 0.7), int(h * 0.7)))
+
+        if isinstance(image_path, str):
+            raw = pygame.image.load(image_path).convert_alpha()
+            w, h = raw.get_size()
+
+            self.original_image = pygame.transform.smoothscale(
+                raw, (int(w * 0.7), int(h * 0.7))
+            )
+
+            self.normal_image = self.original_image
+
+            self.driver_image = None
+
+            if driver_image_path:
+                driver_raw = pygame.image.load(
+                    driver_image_path
+                ).convert_alpha()
+
+                self.driver_image = pygame.transform.smoothscale(
+                    driver_raw, (int(w * 0.7), int(h * 0.7))
+                )
+
+        else:
+            self.original_image = image_path
+            self.normal_image = self.original_image
+            self.driver_image = None
+        
         self.image = self.original_image
         self.rect = self.image.get_rect(center = pos)
         self.angle = 0
@@ -275,6 +300,17 @@ class Car(pygame.sprite.Sprite):
 
     def get_rotation(self):
         self.forward = pygame.Vector2(0, -1).rotate(-self.angle)
+
+    def set_driver(self, visible):
+        if visible and self.driver_image:
+            self.original_image = self.driver_image
+        else:
+            self.original_image = self.normal_image
+
+        self.image = pygame.transform.rotate(
+            self.original_image,
+            self.angle
+        )
 
     def accelerate(self, cars, dt):
         if self.check_road():
@@ -499,14 +535,20 @@ world = World()
 camera_group = CameraGroup(world)
 mission = Mission()
 
+#vehicule setup
+buggy = pygame.image.load("graphics/buggy.png").convert_alpha()
+buggy = pygame.transform.rotate(buggy, 180)
+
+tractor = "graphics/tractor/tractor.png"
+tractor_driver = "graphics/tractor/tractor_with_player.png"
+
 cars = [
-    Car(CAR_START_POS, world, "graphics/Audi.png", (-160, -135), 900, 500),
-    Car((4000, 3000), world, "graphics/Audi.png", (-160, -135), 900, 500),
-    Car((4500, 3000), world, "graphics/Offroad.png", (-20, -20), 700, 700),
-    Car((5000, 3000), world, "graphics/buggy.png", (-20, -20), 1200, 1200),
-    Car((2900, 3300), world, "graphics/tractor.png", (-50, -50), 400, 400),
-    Car((2900, 1000), world, "graphics/Jeep.png", (-60,-60), 700, 700),
-    Car((2700, 1000), world, "graphics/bouboul.png", (-20, -20), 500, 200),
+    Car(CAR_START_POS, world, "graphics/Audi.png", (-20, -20), 1000, 500),
+    Car((4000, 3000), world, "graphics/Audi.png", (-20, -20), 900, 500),
+    Car((5000, 3000), world, buggy, (-50, -50), 1200, 1200),
+    Car((2900, 3300), world, tractor, (-100, -100), 400, 400, tractor_driver),
+    Car((2900, 1000), world, "graphics/Jeep.png", (-60,-60), 1000, 1000),
+    Car((2700, 1000), world, "graphics/bouboul.png", (-20, -20), 600, 200),
     Car((3430,2500), world, "graphics/audi_v2.png", (-20, -20), 900, 500),
     Car((3430,2300), world, "graphics/audi_v3.png", (-20, -20), 900, 500),
     Car((3430,2100), world, "graphics/circle_car.png", (-20, -20), 900, 500)
@@ -555,7 +597,7 @@ while True:
             if event.key == pygame.K_e:
 
                 # ENTER CAR
-                ENTER_DISTANCE = 100
+                ENTER_DISTANCE = 120
 
                 if not player.in_car:
                     closest_car = None
@@ -571,6 +613,9 @@ while True:
                     if closest_car:
                         player.in_car = True
                         player.current_car = closest_car
+
+                        closest_car.set_driver(True)
+
                         player.kill()
                         camera_target = closest_car
 
@@ -579,11 +624,12 @@ while True:
                     car = player.current_car
 
                     player.in_car = False
+                    car.set_driver(False)
                     car.direction = 0
                     car.active = False
 
                     player.rect.center = (
-                        car.hitbox.right + player.rect.width + 80,
+                        car.hitbox.right + player.rect.width,
                         car.hitbox.centery
                     )
 
