@@ -1,5 +1,6 @@
 import pygame, sys, random
 
+# SETTINGS
 SCREEN_WIDTH = 1280
 SCREEN_HEIGHT = 720
 CAR_START_POS = (3320, 3900)
@@ -14,25 +15,42 @@ class World:
         self.surface = pygame.Surface((6000, 4000))
         self.surface.fill(BG_GRASS_COLOR)
 
-        self.rect = self.surface.get_rect(topleft=(0, 0))
+        self.rect = self.surface.get_rect(topleft = (0, 0))
 
+        self.roads = [
+                    pygame.Rect(3000, 0, 400, 4000),
+                    pygame.Rect(3400, 100, 2400, 300),
+                    pygame.Rect(5500, 100, 300, 3400),
+                    pygame.Rect(3400, 3200, 2400, 300)
+                ]
 
         self.fields = []
 
-        for i in range(30):
-            width = random.randint(300, 1000)
-            height = random.randint(300, 800)
+        for i in range(20):
 
-            x = random.randint(0, self.rect.width - width)
-            y = random.randint(0, self.rect.height - height)
+            while True:
+                width = random.randint(600, 1000)
+                height = random.randint(400, 800)
 
-            self.fields.append(pygame.Rect(x, y, width, height))
+                x = random.randint(0, self.rect.width - width)
+                y = random.randint(0, self.rect.height - height)
+
+                new_field = pygame.Rect(x, y, width, height)
+                check_field = new_field.inflate(10, 10)
+
+                if (
+                    not any(check_field.colliderect(field) for field in self.fields)
+                    and not any(new_field.colliderect(road) for road in self.roads)
+                ):
+                    break
+
+            self.fields.append(new_field)
 
         self.hay_bales = [
-            pygame.Rect(3500, 500, 100, 200),
-            pygame.Rect(4000, 500, 100, 200),
-            pygame.Rect(4500, 500, 100, 200),
-            pygame.Rect(5000, 500, 100, 200)
+            pygame.Rect(3500, 500, 50, 100),
+            pygame.Rect(4000, 500, 50, 100),
+            pygame.Rect(4500, 500, 50, 100),
+            pygame.Rect(5000, 500, 50, 100)
         ]
 
         self.houses = [
@@ -42,24 +60,14 @@ class World:
 
         self.obstacles = self.houses + self.hay_bales
 
-        self.roads = [
-            pygame.Rect(3000, 0, 400, 4000),
-            pygame.Rect(3400, 100, 2400, 300),
-            pygame.Rect(5500, 100, 300, 3400),
-            pygame.Rect(3400, 3200, 2400, 300)
-        ]
-
         self.draw_map()
 
         self.scaled_surface = pygame.transform.scale(
-    self.surface,
-    (
-        int(self.surface.get_width() * ZOOM),
-        int(self.surface.get_height() * ZOOM)
-    )
-)
-
+            self.surface,(int(self.surface.get_width() * ZOOM), int(self.surface.get_height() * ZOOM))
+            )
+        
     def draw_map(self):
+
         for field in self.fields:
             pygame.draw.rect(self.surface, FIELD_COLOR, field)
 
@@ -67,7 +75,7 @@ class World:
             pygame.draw.rect(self.surface, OBSTACLE_COLOR, obstacle)
 
         for road in self.roads:
-            pygame.draw.rect(self.surface, ROAD_COLOR, road)
+            pygame.draw.rect(self.surface, ROAD_COLOR, road) 
 
 class Player(pygame.sprite.Sprite):
     def __init__(self, pos, world):
@@ -523,28 +531,28 @@ class Mission:
 
             surface.blit(text, (30, 30))
 
+# INIT
 pygame.init()
-font = pygame.font.Font(None, 40)
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.NOFRAME)
 pygame.mouse.set_visible(False)
-clock = pygame.time.Clock()
-
-# setup
+clock = pygame.time.Clock() # used for creating dt only
 font = pygame.font.Font(None, 40)
+
+# GAME SETUP
 world = World()
 camera_group = CameraGroup(world)
 mission = Mission()
 
-#vehicule setup
+# VEHICLE GRAPHICS
 buggy = "graphics/buggy/buggy.png"
 buggy_driver = "graphics/buggy/buggy_with_player.png"
 
 tractor = "graphics/tractor/tractor.png"
 tractor_driver = "graphics/tractor/tractor_with_player.png"
 
-
+# VEHICLE SETUP
 cars = [
-    Car(CAR_START_POS, world, "graphics/Audi.png", (-20, -20), 1000, 500),
+    Car((CAR_START_POS), world, "graphics/Audi.png", (-20, -20), 1000, 500),
     Car((4000, 3000), world, "graphics/Audi.png", (-20, -20), 900, 500),
     Car((5000,3000), world, buggy, (-50, -50), 1200, 1200, buggy_driver),
     Car((2900, 3300), world, tractor, (-100, -100), 400, 400, tractor_driver),
@@ -555,9 +563,10 @@ cars = [
     Car((3430,2100), world, "graphics/circlus.png", (-20, -20), 900, 500)
 ]
 
-
+# PLAYER SETUP
 player = Player((CAR_START_POS[0] + 80, CAR_START_POS[1]), world)
 
+# CAMERA SETUP
 for car in cars:
     camera_group.add(car)
 
@@ -565,46 +574,64 @@ camera_group.add(player)
 
 camera_target = player
 
-
+# GAME LOOP
 while True:
+
+    # DT
     dt = clock.tick(120) / 1000
 
+
+    # EVENTS
     for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            pygame.quit()
+
+
+        # SHUTDOWN
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
             sys.exit()
 
-        if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_ESCAPE:
-                        pygame.quit()
-                        sys.exit()
+        elif event.type == pygame.QUIT:
+            pygame.quit()
 
+
+        # CAR CONTROLS
         if event.type == pygame.KEYDOWN:
             if player.current_car:
                 car = player.current_car
-                if event.key == pygame.K_RIGHT: car.direction += 1
-                if event.key == pygame.K_LEFT: car.direction -= 1
-                if event.key == pygame.K_SPACE: car.active = True
+
+                if event.key == pygame.K_RIGHT:
+                    car.direction += 1
+                if event.key == pygame.K_LEFT:
+                    car.direction -= 1
+                if event.key == pygame.K_SPACE:
+                    car.active = True
 
         if event.type == pygame.KEYUP:
             if player.current_car:
                 car = player.current_car
-                if event.key == pygame.K_RIGHT: car.direction -= 1
-                if event.key == pygame.K_LEFT: car.direction += 1
-                if event.key == pygame.K_SPACE: car.active = False
 
+                if event.key == pygame.K_RIGHT:
+                    car.direction -= 1
+                if event.key == pygame.K_LEFT:
+                    car.direction += 1
+                if event.key == pygame.K_SPACE:
+                    car.active = False
+
+
+        # ENTER / EXIT CAR
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_e:
 
-                # ENTER CAR
                 ENTER_DISTANCE = 120
 
+                # ENTER CAR
                 if not player.in_car:
                     closest_car = None
                     closest_distance = ENTER_DISTANCE
 
                     for car in cars:
-                        distance = pygame.math.Vector2(player.rect.center).distance_to(car.rect.center)
+                        distance = pygame.math.Vector2(
+                            player.rect.center
+                        ).distance_to(car.rect.center)
 
                         if distance < closest_distance:
                             closest_distance = distance
@@ -613,7 +640,6 @@ while True:
                     if closest_car:
                         player.in_car = True
                         player.current_car = closest_car
-
                         closest_car.set_driver(True)
 
                         player.kill()
@@ -637,13 +663,16 @@ while True:
                     camera_target = player
                     player.current_car = None
 
+
+    # UPDATE
     for car in cars:
         car.update(cars, dt)
 
     player.update(cars, dt)
-
     mission.update(player, dt)
 
+
+    # DRAW
     camera_group.custom_draw(camera_target)
 
     mission.draw(screen, camera_group)
