@@ -86,31 +86,20 @@ class Player(pygame.sprite.Sprite):
         # -------------------------
         # LOAD SPRITE SHEET
         # -------------------------
-        sheet = pygame.image.load(
-            "graphics/player.png"
-        ).convert_alpha()
+        sheet = pygame.image.load("graphics/player.png").convert_alpha()
 
-        self.frames = {
-            "down": [],
-            "up": [],
-            "left": [],
-            "right": []
-        }
+        self.frames = {"down": [], "up": [], "left": [], "right": []}
 
         directions = ["down", "up", "left", "right"]
 
         for row, direction in enumerate(directions):
+        # =
+        # for row in range(len(directions)):
+        #         direction = directions[row]
 
             for col in range(4):
 
-                frame = sheet.subsurface(
-                    pygame.Rect(
-                        col * 32,
-                        row * 32,
-                        32,
-                        32
-                    )
-                )
+                frame = sheet.subsurface(pygame.Rect(col * 32, row * 32, 32, 32))
 
                 # Scale the 32×32 frame
                 frame = pygame.transform.scale(frame, (64, 64))
@@ -131,7 +120,7 @@ class Player(pygame.sprite.Sprite):
         # 300 pixels/second is roughly
         # equivalent to your old 3 pixels/frame
         # when running around 100 FPS.
-        self.speed = 360
+        self.speed = 270
 
         self.movement = pygame.Vector2()
 
@@ -168,15 +157,13 @@ class Player(pygame.sprite.Sprite):
 
         new_rect = self.rect.copy()
 
-        new_rect.center += (
-            self.movement * self.speed * dt
-        )
+        new_rect.center += self.movement * self.speed * dt
 
         # Don't walk through cars
         for car in cars:
 
             if new_rect.colliderect(car.hitbox):
-                return
+                return # stop the whole function immediately
 
         # Don't leave the world
         if not self.world.rect.contains(new_rect):
@@ -192,11 +179,9 @@ class Player(pygame.sprite.Sprite):
 
         if self.movement.length() == 0:
 
-            self.frame_index = 0
+            self.frame_index = 3
 
-            self.image = self.frames[
-                self.direction
-            ][0]
+            self.image = self.frames[self.direction][3]
 
             return
 
@@ -215,9 +200,7 @@ class Player(pygame.sprite.Sprite):
             if self.frame_index >= 4:
                 self.frame_index = 0
 
-        self.image = self.frames[
-            self.direction
-        ][self.frame_index]
+        self.image = self.frames[self.direction][self.frame_index]
 
     def update(self, cars, dt):
 
@@ -225,10 +208,10 @@ class Player(pygame.sprite.Sprite):
         if self.in_car:
             return
 
+        # everything below this only happens when NOT in a car
         self.input()
 
-        # Determine which direction the
-        # character is facing.
+        # Determine which direction the character is facing.
         if self.movement.x < 0:
             self.direction = "left"
 
