@@ -234,31 +234,20 @@ class Car(pygame.sprite.Sprite):
             ):
         super().__init__()
 
-        if isinstance(image_path, str):
-            raw = pygame.image.load(image_path).convert_alpha()
-            w, h = raw.get_size()
+        raw = pygame.image.load(image_path).convert_alpha()
+        w, h = raw.get_size()
 
-            self.original_image = pygame.transform.smoothscale(
-                raw, (int(w * 0.7), int(h * 0.7))
-            )
+        self.original_image = pygame.transform.smoothscale(raw, (int(w * 0.7), int(h * 0.7)))
 
-            self.normal_image = self.original_image
+        # Normal car image (without driver)
+        self.normal_image = self.original_image
 
-            self.driver_image = None
+        self.driver_image = None
 
-            if driver_image_path:
-                driver_raw = pygame.image.load(
-                    driver_image_path
-                ).convert_alpha()
+        if driver_image_path:
+            driver_raw = pygame.image.load(driver_image_path).convert_alpha()
 
-                self.driver_image = pygame.transform.smoothscale(
-                    driver_raw, (int(w * 0.7), int(h * 0.7))
-                )
-
-        else:
-            self.original_image = image_path
-            self.normal_image = self.original_image
-            self.driver_image = None
+            self.driver_image = pygame.transform.smoothscale(driver_raw, (int(w * 0.7), int(h * 0.7)))
         
         self.image = self.original_image
         self.rect = self.image.get_rect(center = pos)
@@ -275,7 +264,7 @@ class Car(pygame.sprite.Sprite):
 
         self.hitbox = self.rect.inflate(*hitbox_inflate)
 
-        self.active = False
+        self.active = False # self.active = True means player commands car to accelerate ie presses space
 
         self.world = world
 
@@ -297,11 +286,9 @@ class Car(pygame.sprite.Sprite):
             self.original_image = self.driver_image
         else:
             self.original_image = self.normal_image
+            # original_image = the base image currently selected for the car
 
-        self.image = pygame.transform.rotate(
-            self.original_image,
-            self.angle
-        )
+        self.image = pygame.transform.rotate(self.original_image,self.angle)
 
     def accelerate(self, cars, dt):
         if self.check_road():
