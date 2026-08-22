@@ -60,6 +60,33 @@ class World:
 
         self.obstacles = self.houses + self.hay_bales
 
+        self.tree_image = pygame.image.load("graphics/tree.png").convert_alpha()
+
+        self.trees = []
+
+        for i in range(50):
+
+            while True:
+                tree_width = 216
+                tree_height = 216
+
+                x = random.randint(0, self.rect.width - tree_width)
+                y = random.randint(0, self.rect.height - tree_height)
+
+                tree_rect = pygame.Rect(
+                    x, y, tree_width, tree_height
+                )
+
+                if (
+                    not any(tree_rect.colliderect(field) for field in self.fields)
+                    and not any(tree_rect.colliderect(road) for road in self.roads)
+                    and not any(tree_rect.colliderect(obstacle) for obstacle in self.obstacles)
+                ):
+                    break
+                
+            tree = Tree((x, y), self.tree_image)
+            self.trees.append(tree)
+
         self.draw_map()
 
         self.scaled_surface = pygame.transform.scale(
@@ -228,6 +255,13 @@ class Player(pygame.sprite.Sprite):
 
         self.animate(dt)
 
+class Tree(pygame.sprite.Sprite):
+    def __init__(self, pos, image):
+        super().__init__()
+
+        self.image = image
+        self.rect = self.image.get_rect(topleft=pos)
+
 class Car(pygame.sprite.Sprite):
     def __init__(
             self, pos, world, image_path, hitbox_inflate, road_speed, offroad_speed, driver_image_path=None
@@ -340,18 +374,20 @@ class CameraGroup(pygame.sprite.Group):
 
         self.half_w = self.display_surface.get_width() // 2
         self.half_h = self.display_surface.get_height() // 2
-    
+
     def center_target_camera(self, target):
 
-        # Camera position in WORLD coordinates
         self.offset.x = target.rect.centerx - self.half_w / ZOOM
         self.offset.y = target.rect.centery - self.half_h / ZOOM
 
         # Prevent camera from leaving the world
         self.offset.x = max(
-            0,min(
-                self.offset.x, self.world.rect.width - self.display_surface.get_width() / ZOOM)
-                )
+            0,
+            min(
+                self.offset.x,
+                self.world.rect.width - self.display_surface.get_width() / ZOOM
+            )
+        )
 
         self.offset.y = max(
             0,
@@ -512,6 +548,10 @@ font = pygame.font.Font(None, 40)
 world = World()
 camera_group = CameraGroup(world)
 mission = Mission()
+
+for tree in world.trees:
+    camera_group.add(tree)
+
 
 # VEHICLE GRAPHICS
 buggy = "graphics/buggy/buggy.png"
