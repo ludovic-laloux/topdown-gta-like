@@ -277,6 +277,7 @@ class Car(pygame.sprite.Sprite):
         self.normal_image = self.original_image
 
         self.driver_image = None
+        self.driver_visible = False
 
         if driver_image_path:
             driver_raw = pygame.image.load(driver_image_path).convert_alpha()
@@ -316,7 +317,9 @@ class Car(pygame.sprite.Sprite):
         self.forward = pygame.Vector2(0, -1).rotate(-self.angle)
 
     def set_driver(self, visible):
-        if visible and self.driver_image:
+        self.driver_visible = bool(visible and self.driver_image)
+
+        if self.driver_visible:
             self.original_image = self.driver_image
         else:
             self.original_image = self.normal_image
@@ -360,6 +363,27 @@ class Car(pygame.sprite.Sprite):
 
     def update(self,cars, dt):
         self.accelerate(cars, dt)
+
+        # Only vehicles with configured animation frames use this path.
+        # Tractor frames animate while moving and return to frame 1 at rest.
+        if hasattr(self, "animation_frames"):
+            if self.speed > 0:
+                self.animation_timer += dt
+
+                if self.animation_timer >= 0.07:
+                    self.animation_timer %= 0.07
+                    self.animation_index = (self.animation_index + 1) % 4
+            else:
+                self.animation_timer = 0
+                self.animation_index = 0
+
+            frames = (
+                self.driver_animation_frames
+                if self.driver_visible
+                else self.animation_frames
+            )
+            self.original_image = frames[self.animation_index]
+
         self.set_rotation(dt)
         self.get_rotation()
 
@@ -557,8 +581,8 @@ for tree in world.trees:
 buggy = "graphics/buggy/buggy.png"
 buggy_driver = "graphics/buggy/buggy_with_player.png"
 
-tractor = "graphics/tractor/tractor.png"
-tractor_driver = "graphics/tractor/tractor_with_player.png"
+tractor = "graphics/tractor/tractor_1.png"
+tractor_driver = "graphics/tractor/tractor_with_player_1.png"
 
 # VEHICLE SETUP
 cars = [
@@ -572,6 +596,57 @@ cars = [
     Car((3430,2300), world, "graphics/audi_v3.png", (-20, -20), 900, 500),
     Car((3430,2100), world, "graphics/circlus.png", (-20, -20), 900, 500)
 ]
+
+# Create forward-rolling tread phases from the tractor's base image.
+def make_tractor_frames(base_image):
+    source = base_image.copy()
+    scale_x = base_image.get_width() / 199
+    scale_y = base_image.get_height() / 263
+    wheel_bounds = [
+        (27, 28, 63, 98),
+        (136, 28, 172, 98),
+        (2, 150, 51, 260),
+        (147, 150, 197, 260),
+    ]
+    frames = []
+
+    for tread_shift in (0, 4, 8, 12):
+        frame = source.copy()
+
+        if tread_shift:
+            shift = max(1, round(tread_shift * scale_y))
+
+            for left, top, right, bottom in wheel_bounds:
+                left = round(left * scale_x)
+                right = round(right * scale_x)
+                top = round(top * scale_y)
+                bottom = round(bottom * scale_y)
+                height = bottom - top
+
+                for y in range(top, bottom):
+                    source_y = top + (y - top - shift) % height
+
+                    for x in range(left, right):
+                        original_pixel = source.get_at((x, y))
+                        tread_pixel = source.get_at((x, source_y))
+
+                        if original_pixel.a and tread_pixel.a:
+                            frame.set_at(
+                                (x, y),
+                                (*tread_pixel[:3], original_pixel.a)
+                            )
+
+        frames.append(frame)
+
+    return frames
+
+
+# Animate only the tractor, with matching frames for both driver states.
+tractor_car = cars[3]
+tractor_car.animation_frames = make_tractor_frames(tractor_car.normal_image)
+tractor_car.driver_animation_frames = make_tractor_frames(tractor_car.driver_image)
+tractor_car.animation_timer = 0
+tractor_car.animation_index = 0
 
 # PLAYER SETUP
 player = Player((CAR_START_POS[0] + 80, CAR_START_POS[1]), world)
