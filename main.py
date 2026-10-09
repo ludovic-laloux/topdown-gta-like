@@ -7,7 +7,7 @@ CAR_START_POS = (3320, 3900)
 BG_GRASS_COLOR = (120, 150, 80)
 FIELD_COLOR = (100,140,20)
 ROAD_COLOR = (80,80,70)
-OBSTACLE_COLOR = (156, 36, 11)
+BALE_COLOR = (156, 36, 11)
 ZOOM = 0.75
 
 class World:
@@ -53,13 +53,20 @@ class World:
             pygame.Rect(5000, 500, 50, 100)
         ]
 
+        house_1 = pygame.image.load("graphics/house_1.png").convert_alpha()
+        house_1 = pygame.transform.scale(house_1, (500, 500))
+
+        house_2 = pygame.image.load("graphics/house_2.png").convert_alpha()
+        house_2 = pygame.transform.scale(house_2, (500, 700))
+
         self.houses = [
             pygame.Rect(2500, 400, 500, 500),
-            pygame.Rect(2500, 2700, 500, 500)
+            pygame.Rect(2500, 2500, 500, 700)
         ]
 
-        self.obstacles = self.houses + self.hay_bales
+        self.house_images = [house_1, house_2]
 
+        self.obstacles = self.houses + self.hay_bales
         self.tree_image = pygame.image.load("graphics/tree.png").convert_alpha()
 
         self.trees = []
@@ -98,11 +105,14 @@ class World:
         for field in self.fields:
             pygame.draw.rect(self.surface, FIELD_COLOR, field)
 
-        for obstacle in self.obstacles:
-            pygame.draw.rect(self.surface, OBSTACLE_COLOR, obstacle)
+        for bale in self.hay_bales:
+            pygame.draw.rect(self.surface, BALE_COLOR, bale)
 
         for road in self.roads:
             pygame.draw.rect(self.surface, ROAD_COLOR, road) 
+
+        for house, image in zip(self.houses, self.house_images):
+            self.surface.blit(image, house.topleft)
 
 class Player(pygame.sprite.Sprite):
     def __init__(self, pos, world):
