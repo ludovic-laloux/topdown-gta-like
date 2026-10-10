@@ -73,6 +73,13 @@ class World:
             for obstacle in self.obstacles
         ]
 
+        self.paths_to_houses = [
+            pygame.Rect(2950, 770 , 50, 100),
+            pygame.Rect(2710, 3200, 60, 200),
+            pygame.Rect(2710, 3400, 290, 60),
+            pygame.Rect(2840, 900, 60, 15)
+        ] 
+
         self.tree_image = pygame.image.load("graphics/tree.png").convert_alpha()
 
         self.trees = []
@@ -93,18 +100,13 @@ class World:
                 if (
                     not any(tree_rect.colliderect(field) for field in self.fields)
                     and not any(tree_rect.colliderect(road) for road in self.roads)
-                    and not any(tree_rect.colliderect(obstacle) for obstacle in self.obstacles)
+                    and not any(tree_rect.colliderect(obstacle) for obstacle in self.obstacles) 
+                    and not any(tree_rect.colliderect(path) for path in self.paths_to_houses)
                 ):
                     break
                 
             tree = Tree((x, y), self.tree_image)
             self.trees.append(tree)
-
-        self.paths_to_houses = [
-            pygame.Rect(2950, 770 , 50, 100),
-            pygame.Rect(2710, 3200, 60, 200),
-            pygame.Rect(2710, 3400, 290, 60)
-        ]
 
         self.draw_map()
 
