@@ -532,7 +532,7 @@ class Mission:
 
             pygame.draw.rect(
                 surface,
-                (255, 255, 0),
+                (100, 0, 255),
                 (*position, *size),
                 5
             )
@@ -595,16 +595,17 @@ tractor = "graphics/tractor/tractor_1.png"
 tractor_driver = "graphics/tractor/tractor_with_player_1.png"
 
 # VEHICLE SETUP
+tractor_car = Car((5380, 3070), world, tractor, (-100, -100), 400, 400, tractor_driver)
+
 cars = [
-    Car((CAR_START_POS), world, "graphics/Audi.png", (-20, -20), 1000, 500),
-    Car((4000, 3000), world, "graphics/Audi.png", (-20, -20), 900, 500),
-    Car((5000,3000), world, buggy, (-50, -50), 1200, 1200, buggy_driver),
-    Car((2900, 3300), world, tractor, (-100, -100), 400, 400, tractor_driver),
+    Car((CAR_START_POS), world, buggy, (-50, -50), 1200, 1200, buggy_driver),
+    Car((2900,3300), world, "graphics/circlus_grey.png", (-20, -20), 900, 500),
+    tractor_car,
     Car((2900, 1000), world, "graphics/Jeep.png", (-60,-60), 1000, 1000),
     Car((2700, 1000), world, "graphics/bouboul.png", (-20, -20), 600, 200),
     Car((3430,2500), world, "graphics/audi_v2.png", (-20, -20), 900, 500),
     Car((3430,2300), world, "graphics/audi_v3.png", (-20, -20), 900, 500),
-    Car((3430,2100), world, "graphics/circlus.png", (-20, -20), 900, 500)
+    Car((3430,2100), world, "graphics/circlus_red.png", (-20, -20), 900, 500)
 ]
 
 # Create forward-rolling tread phases from the tractor's base image.
@@ -652,7 +653,6 @@ def make_tractor_frames(base_image):
 
 
 # Animate only the tractor, with matching frames for both driver states.
-tractor_car = cars[3]
 tractor_car.animation_frames = make_tractor_frames(tractor_car.normal_image)
 tractor_car.driver_animation_frames = make_tractor_frames(tractor_car.driver_image)
 tractor_car.animation_timer = 0
