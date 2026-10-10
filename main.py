@@ -100,12 +100,18 @@ class World:
             tree = Tree((x, y), self.tree_image)
             self.trees.append(tree)
 
+        self.paths_to_houses = [
+            pygame.Rect(2950, 770 , 50, 100),
+            pygame.Rect(2710, 3200, 60, 200),
+            pygame.Rect(2710, 3400, 290, 60)
+        ]
+
         self.draw_map()
 
         self.scaled_surface = pygame.transform.scale(
             self.surface,(int(self.surface.get_width() * ZOOM), int(self.surface.get_height() * ZOOM))
             )
-        
+
     def draw_map(self):
 
         for field in self.fields:
@@ -119,6 +125,9 @@ class World:
 
         for house, image in zip(self.houses, self.house_images):
             self.surface.blit(image, house.topleft)
+
+        for path in self.paths_to_houses:
+            pygame.draw.rect(self.surface, ROAD_COLOR, path)
 
 class Player(pygame.sprite.Sprite):
     def __init__(self, pos, world):
