@@ -67,6 +67,12 @@ class World:
         self.house_images = [house_1, house_2]
 
         self.obstacles = self.houses + self.hay_bales
+
+        self.obstacle_masks = [
+            pygame.mask.Mask(obstacle.size, fill=True)
+            for obstacle in self.obstacles
+        ]
+
         self.tree_image = pygame.image.load("graphics/tree.png").convert_alpha()
 
         self.trees = []
@@ -299,8 +305,6 @@ class Car(pygame.sprite.Sprite):
         
         self.image = self.original_image
         self.rect = self.image.get_rect(center = pos)
-        self.image = self.original_image
-        self.rect = self.image.get_rect(center = pos)
         self.mask = pygame.mask.from_surface(self.image)
         self.angle = 0
         self.rotation_speed = 180
@@ -331,13 +335,15 @@ class Car(pygame.sprite.Sprite):
         image, rect, mask = self.build_image(new_angle)
 
         # Cancel the turn if it would make the car overlap another car
-        if new_angle != self.angle and self.hits_car(rect, mask, cars):
+        if new_angle != self.angle and (
+            self.hits_car(rect, mask, cars) or self.hits_obstacle(rect, mask)
+        ):
             image, rect, mask = self.build_image(self.angle)
         else:
             self.angle = new_angle
 
         self.image, self.rect, self.mask = image, rect, mask
-
+            
     def build_image(self, angle):
         image = pygame.transform.rotate(self.original_image, angle)
         rect = image.get_rect(center=self.hitbox.center)
@@ -351,6 +357,14 @@ class Car(pygame.sprite.Sprite):
             if rect.colliderect(car.rect):
                 offset = (car.rect.x - rect.x, car.rect.y - rect.y)
                 if mask.overlap(car.mask, offset):
+                    return True
+        return False
+
+    def hits_obstacle(self, rect, mask):
+        for obstacle, obstacle_mask in zip(self.world.obstacles, self.world.obstacle_masks):
+            if rect.colliderect(obstacle):
+                offset = (obstacle.x - rect.x, obstacle.y - rect.y)
+                if mask.overlap(obstacle_mask, offset):
                     return True
         return False
 
@@ -384,12 +398,11 @@ class Car(pygame.sprite.Sprite):
         new_hitbox = self.hitbox.copy()
         new_hitbox.center += self.forward * self.speed * dt
 
-        for obstacle in self.world.obstacles:
-            if new_hitbox.colliderect(obstacle):
-                return
-
         new_rect = self.rect.copy()
         new_rect.center = new_hitbox.center
+
+        if self.hits_obstacle(new_rect, self.mask):
+            return
 
         if self.hits_car(new_rect, self.mask, cars):
             return
