@@ -197,10 +197,13 @@ class Player(pygame.sprite.Sprite):
         new_rect.center += self.movement * self.speed * dt
 
         # Don't walk through cars
-        for car in cars:
+        player_mask = pygame.mask.from_surface(self.image)
 
-            if new_rect.colliderect(car.hitbox):
-                return # stop the whole function immediately
+        for car in cars:
+            if new_rect.colliderect(car.rect):
+                offset = (car.rect.x - new_rect.x, car.rect.y - new_rect.y)
+                if player_mask.overlap(car.mask, offset):
+                    return
 
         # Don't leave the world
         if not self.world.rect.contains(new_rect):
@@ -296,6 +299,9 @@ class Car(pygame.sprite.Sprite):
         
         self.image = self.original_image
         self.rect = self.image.get_rect(center = pos)
+        self.image = self.original_image
+        self.rect = self.image.get_rect(center = pos)
+        self.mask = pygame.mask.from_surface(self.image)
         self.angle = 0
         self.rotation_speed = 180
         self.direction = 0
@@ -313,15 +319,40 @@ class Car(pygame.sprite.Sprite):
 
         self.world = world
 
-    def set_rotation(self, dt):
+    def set_rotation(self, cars, dt):
+        new_angle = self.angle
+
         if self.speed > 0:
             if self.direction == 1:
-                self.angle -= self.rotation_speed * dt
+                new_angle -= self.rotation_speed * dt
             if self.direction == -1:
-                self.angle += self.rotation_speed * dt
+                new_angle += self.rotation_speed * dt
 
-        self.image = pygame.transform.rotate(self.original_image, self.angle)
-        self.rect = self.image.get_rect(center=self.hitbox.center)
+        image, rect, mask = self.build_image(new_angle)
+
+        # Cancel the turn if it would make the car overlap another car
+        if new_angle != self.angle and self.hits_car(rect, mask, cars):
+            image, rect, mask = self.build_image(self.angle)
+        else:
+            self.angle = new_angle
+
+        self.image, self.rect, self.mask = image, rect, mask
+
+    def build_image(self, angle):
+        image = pygame.transform.rotate(self.original_image, angle)
+        rect = image.get_rect(center=self.hitbox.center)
+        mask = pygame.mask.from_surface(image)
+        return image, rect, mask
+
+    def hits_car(self, rect, mask, cars):
+        for car in cars:
+            if car is self:
+                continue
+            if rect.colliderect(car.rect):
+                offset = (car.rect.x - rect.x, car.rect.y - rect.y)
+                if mask.overlap(car.mask, offset):
+                    return True
+        return False
 
     def get_rotation(self):
         self.forward = pygame.Vector2(0, -1).rotate(-self.angle)
@@ -357,9 +388,11 @@ class Car(pygame.sprite.Sprite):
             if new_hitbox.colliderect(obstacle):
                 return
 
-        for car in cars:
-            if car != self and new_hitbox.colliderect(car.hitbox):
-                return
+        new_rect = self.rect.copy()
+        new_rect.center = new_hitbox.center
+
+        if self.hits_car(new_rect, self.mask, cars):
+            return
 
         if self.world.rect.contains(new_hitbox):
             self.hitbox = new_hitbox
@@ -394,7 +427,7 @@ class Car(pygame.sprite.Sprite):
             )
             self.original_image = frames[self.animation_index]
 
-        self.set_rotation(dt)
+        self.set_rotation(cars, dt)
         self.get_rotation()
 
 class CameraGroup(pygame.sprite.Group):
@@ -750,7 +783,7 @@ while True:
                     car.active = False
 
                     player.rect.center = (
-                        car.hitbox.right + player.rect.width,
+                        car.rect.right + player.rect.width,
                         car.hitbox.centery
                     )
 
