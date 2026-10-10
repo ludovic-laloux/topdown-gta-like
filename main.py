@@ -314,23 +314,29 @@ class Car(pygame.sprite.Sprite):
         self.speed = 0
         self.acceleration = 400
         self.friction = 500
+        self.brake = 1200
         self.road_speed = road_speed
         self.offroad_speed = offroad_speed
 
         self.hitbox = self.rect.inflate(*hitbox_inflate)
 
         self.active = False # self.active = True means player commands car to accelerate ie presses space
+        self.reverse_active = False
 
         self.world = world
 
     def set_rotation(self, cars, dt):
         new_angle = self.angle
 
-        if self.speed > 0:
+        if self.speed != 0:
+            steer = self.rotation_speed * dt
+            if self.speed < 0:
+                steer = -steer  # steering flips when reversing, like a real car
+
             if self.direction == 1:
-                new_angle -= self.rotation_speed * dt
+                new_angle -= steer
             if self.direction == -1:
-                new_angle += self.rotation_speed * dt
+                new_angle += steer
 
         image, rect, mask = self.build_image(new_angle)
 
@@ -391,10 +397,21 @@ class Car(pygame.sprite.Sprite):
         if self.active:
             self.speed += self.acceleration * dt
             self.speed = min(self.speed, max_speed)
+        elif self.reverse_active:
+            if self.speed > 0:
+                # still rolling forward: brake first
+                self.speed = max(self.speed - self.brake * dt, 0)
+            else:
+                # stopped or already going backwards: reverse
+                self.speed -= self.acceleration * dt
+                self.speed = max(self.speed, -max_speed * 0.4)
         else:
-            self.speed -= self.friction * dt
-            self.speed = max(self.speed, 0)
-
+            # friction slows the car toward 0 from either direction
+            if self.speed > 0:
+                self.speed = max(self.speed - self.friction * dt, 0)
+            elif self.speed < 0:
+                self.speed = min(self.speed + self.friction * dt, 0)
+                
         new_hitbox = self.hitbox.copy()
         new_hitbox.center += self.forward * self.speed * dt
 
@@ -417,18 +434,19 @@ class Car(pygame.sprite.Sprite):
                 return True
         return False
 
-    def update(self,cars, dt):
+    def update(self, cars, dt):
         self.accelerate(cars, dt)
 
         # Only vehicles with configured animation frames use this path.
-        # Tractor frames animate while moving and return to frame 1 at rest.
+        # Tractor frames animate while moving (forward or backward) and return to frame 1 at rest.
         if hasattr(self, "animation_frames"):
-            if self.speed > 0:
+            if self.speed != 0:
                 self.animation_timer += dt
 
                 if self.animation_timer >= 0.07:
                     self.animation_timer %= 0.07
-                    self.animation_index = (self.animation_index + 1) % 4
+                    step = 1 if self.speed > 0 else -1
+                    self.animation_index = (self.animation_index + step) % 4
             else:
                 self.animation_timer = 0
                 self.animation_index = 0
@@ -728,10 +746,12 @@ while True:
 
         # SHUTDOWN
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            pygame.quit()
             sys.exit()
 
         elif event.type == pygame.QUIT:
             pygame.quit()
+            sys.exit()
 
 
         # CAR CONTROLS
@@ -745,6 +765,8 @@ while True:
                     car.direction -= 1
                 if event.key == pygame.K_SPACE:
                     car.active = True
+                if event.key == pygame.K_DOWN:
+                    car.reverse_active = True
 
         if event.type == pygame.KEYUP:
             if player.current_car:
@@ -756,7 +778,8 @@ while True:
                     car.direction += 1
                 if event.key == pygame.K_SPACE:
                     car.active = False
-
+                if event.key == pygame.K_DOWN:
+                    car.reverse_active = False
 
         # ENTER / EXIT CAR
         if event.type == pygame.KEYDOWN:
@@ -794,6 +817,7 @@ while True:
                     car.set_driver(False)
                     car.direction = 0
                     car.active = False
+                    car.reverse_active = False
 
                     player.rect.center = (
                         car.rect.right + player.rect.width,
