@@ -68,10 +68,10 @@ class World:
 
         self.obstacles = self.houses + self.hay_bales
 
-        self.obstacle_masks = [
-            pygame.mask.Mask(obstacle.size, fill=True)
-            for obstacle in self.obstacles
-        ]
+        self.obstacle_masks = (
+            [pygame.mask.from_surface(image) for image in self.house_images]
+            + [pygame.mask.Mask(bale.size, fill=True) for bale in self.hay_bales]
+        )
 
         self.paths_to_houses = [
             pygame.Rect(2950, 770 , 50, 100),
