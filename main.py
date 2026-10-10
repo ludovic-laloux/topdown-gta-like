@@ -60,8 +60,8 @@ class World:
         house_2 = pygame.transform.scale(house_2, (500, 700))
 
         self.houses = [
-            pygame.Rect(2500, 400, 500, 500),
-            pygame.Rect(2500, 2500, 500, 700)
+            pygame.Rect(2450, 400, 500, 500),
+            pygame.Rect(2480, 2500, 500, 700)
         ]
 
         self.house_images = [house_1, house_2]
