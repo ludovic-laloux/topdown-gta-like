@@ -331,7 +331,7 @@ class Car(pygame.sprite.Sprite):
 
         self.hitbox = self.rect.inflate(*hitbox_inflate)
 
-        self.active = False # self.active = True means player commands car to accelerate ie presses space
+        self.active = False # self.active = True means player commands car to accelerate ie presses arrow up
         self.reverse_active = False
 
         self.world = world
@@ -774,7 +774,7 @@ while True:
                     car.direction += 1
                 if event.key == pygame.K_LEFT:
                     car.direction -= 1
-                if event.key == pygame.K_SPACE:
+                if event.key == pygame.K_UP:
                     car.active = True
                 if event.key == pygame.K_DOWN:
                     car.reverse_active = True
@@ -787,7 +787,7 @@ while True:
                     car.direction -= 1
                 if event.key == pygame.K_LEFT:
                     car.direction += 1
-                if event.key == pygame.K_SPACE:
+                if event.key == pygame.K_UP:
                     car.active = False
                 if event.key == pygame.K_DOWN:
                     car.reverse_active = False
