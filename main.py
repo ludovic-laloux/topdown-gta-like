@@ -863,7 +863,7 @@ while True:
                     car.direction += 1
                 if event.key == pygame.K_LEFT:
                     car.direction -= 1
-                if event.key == pygame.K_SPACE:
+                if event.key == pygame.K_z:
                     car.active = True
                 if event.key == pygame.K_s:
                     car.reverse_active = True
@@ -876,7 +876,7 @@ while True:
                     car.direction -= 1
                 if event.key == pygame.K_LEFT:
                     car.direction += 1
-                if event.key == pygame.K_SPACE:
+                if event.key == pygame.K_z:
                     car.active = False
                 if event.key == pygame.K_s:
                     car.reverse_active = False
