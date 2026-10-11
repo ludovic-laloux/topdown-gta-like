@@ -125,7 +125,7 @@ class World:
 
         self.trees = []
 
-        for i in range(35):
+        for i in range(20):
 
             while True:
                 tree_width = 216
@@ -143,6 +143,7 @@ class World:
                     and not any(tree_rect.colliderect(road) for road in self.roads)
                     and not any(tree_rect.colliderect(obstacle) for obstacle in self.obstacles) 
                     and not any(tree_rect.colliderect(path) for path in self.paths_to_houses)
+                    and not any(tree_rect.inflate(40, 40).colliderect(tree.rect) for tree in self.trees)
                     and not tree_rect.colliderect(self.wheat_rect)
                 ):
                     break
