@@ -243,41 +243,56 @@ class Player(pygame.sprite.Sprite):
         if keys[pygame.K_s]:
             self.movement.y += 1
 
+    def is_blocked(self, test_hitbox, cars):
+        # Stay inside the world
+        if not self.world.rect.contains(test_hitbox):
+            return True
+
+        # Cars: feet box against the car's real shape
+        for car in cars:
+            if test_hitbox.colliderect(car.rect):
+                offset = (car.rect.x - test_hitbox.x, car.rect.y - test_hitbox.y)
+                if self.feet_mask.overlap(car.mask, offset):
+                    return True
+
+        # Obstacles: houses, bales, flower beds
+        for obstacle, obstacle_mask in zip(self.world.obstacles, self.world.obstacle_masks):
+            if test_hitbox.colliderect(obstacle):
+                offset = (obstacle.x - test_hitbox.x, obstacle.y - test_hitbox.y)
+                if self.feet_mask.overlap(obstacle_mask, offset):
+                    return True
+
+        return False
+
+    def find_exit_spot(self, car, cars):
+        # right, left, below, above, then the four corners
+        directions = ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, 1), (1, -1), (-1, -1))
+
+        for gap in (10, 40, 90, 150):          # closest first
+            for dx, dy in directions:
+                test = self.hitbox.copy()
+                test.centerx = car.rect.centerx + dx * (car.rect.width // 2 + test.width // 2 + gap)
+                test.centery = car.rect.centery + dy * (car.rect.height // 2 + test.height // 2 + gap)
+
+                if not self.is_blocked(test, cars):
+                    return test
+
+        return None
+
     def move(self, cars, dt):
         if self.movement.length() > 0:
             self.movement = self.movement.normalize()
 
-        def blocked(test_hitbox):
-            # Stay inside the world
-            if not self.world.rect.contains(test_hitbox):
-                return True
-
-            # Cars: feet box against the car's real shape
-            for car in cars:
-                if test_hitbox.colliderect(car.rect):
-                    offset = (car.rect.x - test_hitbox.x, car.rect.y - test_hitbox.y)
-                    if self.feet_mask.overlap(car.mask, offset):
-                        return True
-
-            # Obstacles: feet box against the house, bale and flower bed masks
-            for obstacle, obstacle_mask in zip(self.world.obstacles, self.world.obstacle_masks):
-                if test_hitbox.colliderect(obstacle):
-                    offset = (obstacle.x - test_hitbox.x, obstacle.y - test_hitbox.y)
-                    if self.feet_mask.overlap(obstacle_mask, offset):
-                        return True
-
-            return False
-
         # Horizontal
         candidate = self.hitbox.copy()
         candidate.x += self.movement.x * self.speed * dt
-        if not blocked(candidate):
+        if not self.is_blocked(candidate, cars):
             self.hitbox = candidate
 
         # Vertical
         candidate = self.hitbox.copy()
         candidate.y += self.movement.y * self.speed * dt
-        if not blocked(candidate):
+        if not self.is_blocked(candidate, cars):
             self.hitbox = candidate
 
         # Keep the visual sprite aligned with the feet
@@ -899,24 +914,22 @@ while True:
                 # EXIT CAR
                 else:
                     car = player.current_car
+                    spot = player.find_exit_spot(car, cars)
 
-                    player.in_car = False
-                    car.set_driver(False)
-                    car.direction = 0
-                    car.active = False
-                    car.reverse_active = False
+                    if spot is not None:
+                        player.in_car = False
+                        car.set_driver(False)
+                        car.direction = 0
+                        car.active = False
+                        car.reverse_active = False
 
-                    # Place the player next to the car
-                    player.hitbox.midleft = (
-                        car.rect.right + 10,          # a little gap so they don't overlap
-                        car.hitbox.centery
-                    )
-                    player.rect.midbottom = player.hitbox.midbottom
+                        player.hitbox = spot
+                        player.rect.midbottom = player.hitbox.midbottom
 
-                    camera_group.add(player)
-                    camera_target = player
-                    player.current_car = None
-
+                        camera_group.add(player)
+                        camera_target = player
+                        player.current_car = None
+                    # if there is no free space, the player simply stays in the car
 
     # UPDATE
     for car in cars:
