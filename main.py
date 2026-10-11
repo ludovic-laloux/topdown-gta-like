@@ -741,28 +741,26 @@ cars = [
     Car((3430,2100), world, "graphics/circlus_red.png", (-20, -20), 900, 500)
 ]
 
+# Move only the bales that landed on a car, keeping the spacing between bales
 for bale in world.hay_bales:
-    while True:
-        candidate = pygame.Rect(
-            random.randint(world.wheat_rect.left, world.wheat_rect.right - bale.width),
-            random.randint(world.wheat_rect.top, world.wheat_rect.bottom - bale.height),
-            bale.width,
-            bale.height
-        )
+    while any(bale.inflate(10, 10).colliderect(car.rect) for car in cars):
+        while True:
+            candidate = pygame.Rect(
+                random.randint(world.wheat_rect.left, world.wheat_rect.right - bale.width),
+                random.randint(world.wheat_rect.top, world.wheat_rect.bottom - bale.height),
+                bale.width,
+                bale.height
+            )
 
-        overlaps_car = any(
-            candidate.inflate(10, 10).colliderect(car.rect)
-            for car in cars
-        )
-        overlaps_bale = any(
-            candidate.inflate(10, 10).colliderect(other)
-            for other in world.hay_bales
-            if other is not bale
-        )
+            far_enough = not any(
+                candidate.inflate(600, 600).colliderect(other)
+                for other in world.hay_bales
+                if other is not bale
+            )
 
-        if not overlaps_car and not overlaps_bale:
-            bale.topleft = candidate.topleft
-            break
+            if far_enough:
+                bale.topleft = candidate.topleft
+                break
 
 world.surface.fill(BG_GRASS_COLOR)
 world.draw_map()
