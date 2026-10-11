@@ -219,6 +219,7 @@ class Player(pygame.sprite.Sprite):
         # Tune these two numbers until it feels right
         self.hitbox = pygame.Rect(0, 0, 36, 26)
         self.hitbox.midbottom = self.rect.midbottom
+        self.feet_mask = pygame.mask.Mask(self.hitbox.size, fill=True)
 
         self.speed = 270
         self.movement = pygame.Vector2()
@@ -250,25 +251,18 @@ class Player(pygame.sprite.Sprite):
             if not self.world.rect.contains(test_hitbox):
                 return True
 
-            # Temporary mask representing the player's feet hitbox
-            player_mask = pygame.mask.Mask(test_hitbox.size, fill=True)
-
-            # Cars (simple rect is fine)
+            # Cars: feet box against the car's real shape
             for car in cars:
-                if test_hitbox.colliderect(car.hitbox):
-                    return True
+                if test_hitbox.colliderect(car.rect):
+                    offset = (car.rect.x - test_hitbox.x, car.rect.y - test_hitbox.y)
+                    if self.feet_mask.overlap(car.mask, offset):
+                        return True
 
-            # Obstacles – use the existing masks so empty corners become walkable
-            for obstacle, obstacle_mask in zip(
-                self.world.obstacles,
-                self.world.obstacle_masks
-            ):
+            # Obstacles: feet box against the house, bale and flower bed masks
+            for obstacle, obstacle_mask in zip(self.world.obstacles, self.world.obstacle_masks):
                 if test_hitbox.colliderect(obstacle):
-                    offset = (
-                        obstacle.x - test_hitbox.x,
-                        obstacle.y - test_hitbox.y
-                    )
-                    if player_mask.overlap(obstacle_mask, offset):
+                    offset = (obstacle.x - test_hitbox.x, obstacle.y - test_hitbox.y)
+                    if self.feet_mask.overlap(obstacle_mask, offset):
                         return True
 
             return False
