@@ -196,6 +196,8 @@ class Player(pygame.sprite.Sprite):
         self.image = self.frames["down"][0]
         self.rect = self.image.get_rect(center=pos)
 
+        self.collision_mask = pygame.mask.from_surface(self.frames["down"][0])
+
         # 300 pixels/second is roughly
         # equivalent to your old 3 pixels/frame
         # when running around 100 FPS.
@@ -230,28 +232,53 @@ class Player(pygame.sprite.Sprite):
             self.movement.y += 1
 
     def move(self, cars, dt):
-
         if self.movement.length() > 0:
             self.movement = self.movement.normalize()
 
-        new_rect = self.rect.copy()
+        player_mask = self.collision_mask
 
-        new_rect.center += self.movement * self.speed * dt
+        def blocked(test_rect):
+            if not self.world.rect.contains(test_rect):
+                return True
 
-        # Don't walk through cars
-        player_mask = pygame.mask.from_surface(self.image)
+            for car in cars:
+                if test_rect.colliderect(car.rect):
+                    offset = (
+                        car.rect.x - test_rect.x,
+                        car.rect.y - test_rect.y
+                    )
+                    if player_mask.overlap(car.mask, offset):
+                        return True
 
-        for car in cars:
-            if new_rect.colliderect(car.rect):
-                offset = (car.rect.x - new_rect.x, car.rect.y - new_rect.y)
-                if player_mask.overlap(car.mask, offset):
-                    return
+            for obstacle, obstacle_mask in zip(
+                self.world.obstacles,
+                self.world.obstacle_masks
+            ):
+                if test_rect.colliderect(obstacle):
+                    offset = (
+                        obstacle.x - test_rect.x,
+                        obstacle.y - test_rect.y
+                    )
+                    if player_mask.overlap(obstacle_mask, offset):
+                        return True
 
-        # Don't leave the world
-        if not self.world.rect.contains(new_rect):
-            return
+            return False
 
-        self.rect = new_rect
+        moved_rect = self.rect.copy()
+
+        # Try horizontal movement first.
+        candidate = moved_rect.copy()
+        candidate.x += self.movement.x * self.speed * dt
+        if not blocked(candidate):
+            moved_rect = candidate
+
+        # Then try vertical movement.
+        candidate = moved_rect.copy()
+        candidate.y += self.movement.y * self.speed * dt
+        if not blocked(candidate):
+            moved_rect = candidate
+
+        self.rect = moved_rect
 
     def animate(self, dt):
 
