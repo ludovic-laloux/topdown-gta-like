@@ -358,7 +358,10 @@ class Car(pygame.sprite.Sprite):
         self.speed = 0
         self.acceleration = 400
         self.friction = 500
-        self.brake = 1200
+        self.brake = 1500
+        self.reverse_acceleration = 700  # how quickly it picks up speed in reverse
+        self.reverse_factor = 0.5        # top reverse speed as a share of top speed
+        
         self.road_speed = road_speed
         self.offroad_speed = offroad_speed
 
@@ -439,23 +442,27 @@ class Car(pygame.sprite.Sprite):
             max_speed = self.offroad_speed
 
         if self.active:
-            self.speed += self.acceleration * dt
-            self.speed = min(self.speed, max_speed)
+            if self.speed < 0:
+                # rolling backwards: brake out of the reverse first
+                self.speed = min(self.speed + self.brake * dt, 0)
+            else:
+                self.speed += self.acceleration * dt
+                self.speed = min(self.speed, max_speed)
         elif self.reverse_active:
             if self.speed > 0:
                 # still rolling forward: brake first
                 self.speed = max(self.speed - self.brake * dt, 0)
             else:
                 # stopped or already going backwards: reverse
-                self.speed -= self.acceleration * dt
-                self.speed = max(self.speed, -max_speed * 0.4)
+                self.speed -= self.reverse_acceleration * dt
+                self.speed = max(self.speed, -max_speed * self.reverse_factor)
         else:
             # friction slows the car toward 0 from either direction
             if self.speed > 0:
                 self.speed = max(self.speed - self.friction * dt, 0)
             elif self.speed < 0:
                 self.speed = min(self.speed + self.friction * dt, 0)
-                
+
         new_hitbox = self.hitbox.copy()
         new_hitbox.center += self.forward * self.speed * dt
 
@@ -471,7 +478,7 @@ class Car(pygame.sprite.Sprite):
         if self.world.rect.contains(new_hitbox):
             self.hitbox = new_hitbox
             self.rect.center = self.hitbox.center
-
+    
     def check_road(self):
         for road in self.world.roads:
             if self.hitbox.colliderect(road):
