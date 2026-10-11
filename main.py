@@ -456,7 +456,13 @@ class Car(pygame.sprite.Sprite):
         else:
             max_speed = self.offroad_speed
 
-        if self.active:
+        if self.active and self.reverse_active:
+            # both pressed: brake to a standstill, never reverse
+            if self.speed > 0:
+                self.speed = max(self.speed - self.brake * dt, 0)
+            elif self.speed < 0:
+                self.speed = min(self.speed + self.brake * dt, 0)
+        elif self.active:
             if self.speed < 0:
                 # rolling backwards: brake out of the reverse first
                 self.speed = min(self.speed + self.brake * dt, 0)
@@ -493,7 +499,7 @@ class Car(pygame.sprite.Sprite):
         if self.world.rect.contains(new_hitbox):
             self.hitbox = new_hitbox
             self.rect.center = self.hitbox.center
-    
+
     def check_road(self):
         for road in self.world.roads:
             if self.hitbox.colliderect(road):
