@@ -82,11 +82,36 @@ class World:
 
         self.house_images = [house_1, house_2]
 
-        self.obstacles = self.houses + self.hay_bales
+        # Flower beds (defined early so they can be part of obstacles)
+        self.flower_bed_triangle_image = pygame.image.load(
+            "graphics/flower_bed_triangle.png"
+        ).convert_alpha()
+        self.flower_bed_triangle_rect = self.flower_bed_triangle_image.get_rect(
+            topleft=(2770, 3248)
+        )
+
+        self.flower_bed_rect_image = pygame.image.load(
+            "graphics/flower_bed_rect.png"
+        ).convert_alpha()
+        self.flower_bed_rect_rect = self.flower_bed_rect_image.get_rect(
+            topleft=(2630, 3200)
+        )
+
+        self.flower_beds = [
+            self.flower_bed_triangle_rect,
+            self.flower_bed_rect_rect
+        ]
+
+        # Obstacles now include houses + hay bales + flower beds
+        self.obstacles = self.houses + self.hay_bales + self.flower_beds
 
         self.obstacle_masks = (
             [pygame.mask.from_surface(image) for image in self.house_images]
             + [pygame.mask.Mask(bale.size, fill=True) for bale in self.hay_bales]
+            + [
+                pygame.mask.from_surface(self.flower_bed_triangle_image),
+                pygame.mask.from_surface(self.flower_bed_rect_image)
+            ]
         )
 
         self.paths_to_houses = [
@@ -125,17 +150,6 @@ class World:
             tree = Tree((x, y), self.tree_image)
             self.trees.append(tree)
 
-        self.flower_bed_triangle_image = pygame.image.load(
-            "graphics/flower_bed_triangle.png"
-        ).convert_alpha()
-
-        self.flower_bed_triangle_rect = self.flower_bed_triangle_image.get_rect(
-            topleft=(2770, 3248)
-        )
-
-        self.flower_bed_rect_image = pygame.image.load("graphics/flower_bed_rect.png").convert_alpha()
-        self.flower_bed_rect_rect = self.flower_bed_rect_image.get_rect(topleft =(2630, 3200))
-
         self.draw_map()
 
         self.scaled_surface = pygame.transform.scale(
@@ -169,6 +183,7 @@ class World:
 
         self.surface.blit(self.flower_bed_triangle_image, self.flower_bed_triangle_rect)
         self.surface.blit(self.flower_bed_rect_image, self.flower_bed_rect_rect)
+
 
 class Player(pygame.sprite.Sprite):
     def __init__(self, pos, world):
@@ -351,12 +366,14 @@ class Player(pygame.sprite.Sprite):
 
         self.animate(dt)
 
+
 class Tree(pygame.sprite.Sprite):
     def __init__(self, pos, image):
         super().__init__()
 
         self.image = image
         self.rect = self.image.get_rect(topleft=pos)
+
 
 class Car(pygame.sprite.Sprite):
     def __init__(
@@ -538,6 +555,7 @@ class Car(pygame.sprite.Sprite):
         self.set_rotation(cars, dt)
         self.get_rotation()
 
+
 class CameraGroup(pygame.sprite.Group):
     def __init__(self, world):
         super().__init__()
@@ -598,6 +616,7 @@ class CameraGroup(pygame.sprite.Group):
                 scaled_image,
                 position
             )
+
 
 class Mission:
     def __init__(self):
@@ -711,6 +730,7 @@ class Mission:
             )
 
             surface.blit(text, (30, 30))
+
 
 # INIT
 pygame.init()
