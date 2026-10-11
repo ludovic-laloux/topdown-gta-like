@@ -17,6 +17,8 @@ class World:
 
         self.rect = self.surface.get_rect(topleft = (0, 0))
 
+        self.wheat_rect = pygame.Rect(3400, 400, 2100, 2800)   # island between the four roads
+
         self.roads = [
                     pygame.Rect(3000, 0, 400, 4000),
                     pygame.Rect(3400, 100, 2400, 300),
@@ -26,7 +28,7 @@ class World:
 
         self.fields = []
 
-        for i in range(20):
+        for i in range(10):
 
             while True:
                 width = random.randint(600, 1000)
@@ -41,18 +43,32 @@ class World:
                 if (
                     not any(check_field.colliderect(field) for field in self.fields)
                     and not any(new_field.colliderect(road) for road in self.roads)
+                    and not new_field.colliderect(self.wheat_rect)
                 ):
                     break
-
+                
             self.fields.append(new_field)
 
-        self.hay_bales = [
-            pygame.Rect(3500, 500, 50, 100),
-            pygame.Rect(4000, 500, 50, 100),
-            pygame.Rect(4500, 500, 50, 100),
-            pygame.Rect(5000, 500, 50, 100)
-        ]
+        self.hay_bale_image = pygame.image.load("graphics/hay_bale.png").convert_alpha()
+        self.hay_bale_image = pygame.transform.scale(self.hay_bale_image, (48, 96))
 
+        self.hay_bales = []
+
+        for _ in range(18):
+            width, height = 48, 96
+
+            while True:
+                x = random.randint(self.wheat_rect.left, self.wheat_rect.right - width)
+                y = random.randint(self.wheat_rect.top, self.wheat_rect.bottom - height)
+                new_bale = pygame.Rect(x, y, width, height)
+
+                if not any(
+                    new_bale.inflate(600, 600).colliderect(bale)
+                    for bale in self.hay_bales
+                ):
+                    self.hay_bales.append(new_bale)
+                    break
+        
         house_1 = pygame.image.load("graphics/house_1.png").convert_alpha()
         house_1 = pygame.transform.scale(house_1, (500, 500))
 
@@ -84,7 +100,7 @@ class World:
 
         self.trees = []
 
-        for i in range(50):
+        for i in range(35):
 
             while True:
                 tree_width = 216
@@ -102,6 +118,7 @@ class World:
                     and not any(tree_rect.colliderect(road) for road in self.roads)
                     and not any(tree_rect.colliderect(obstacle) for obstacle in self.obstacles) 
                     and not any(tree_rect.colliderect(path) for path in self.paths_to_houses)
+                    and not tree_rect.colliderect(self.wheat_rect)
                 ):
                     break
                 
@@ -119,8 +136,16 @@ class World:
         for field in self.fields:
             pygame.draw.rect(self.surface, FIELD_COLOR, field)
 
+        tile = pygame.image.load("graphics/wheat_tile.png").convert()
+
+        self.surface.set_clip(self.wheat_rect)
+        for x in range(self.wheat_rect.left, self.wheat_rect.right, tile.get_width()):
+            for y in range(self.wheat_rect.top, self.wheat_rect.bottom, tile.get_height()):
+                self.surface.blit(tile, (x, y))
+        self.surface.set_clip(None)
+
         for bale in self.hay_bales:
-            pygame.draw.rect(self.surface, BALE_COLOR, bale)
+            self.surface.blit(self.hay_bale_image, bale.topleft)
 
         for road in self.roads:
             pygame.draw.rect(self.surface, ROAD_COLOR, road) 
@@ -682,6 +707,39 @@ cars = [
     Car((3430,2300), world, "graphics/audi_v3.png", (-20, -20), 900, 500),
     Car((3430,2100), world, "graphics/circlus_red.png", (-20, -20), 900, 500)
 ]
+
+for bale in world.hay_bales:
+    while True:
+        candidate = pygame.Rect(
+            random.randint(world.wheat_rect.left, world.wheat_rect.right - bale.width),
+            random.randint(world.wheat_rect.top, world.wheat_rect.bottom - bale.height),
+            bale.width,
+            bale.height
+        )
+
+        overlaps_car = any(
+            candidate.inflate(10, 10).colliderect(car.rect)
+            for car in cars
+        )
+        overlaps_bale = any(
+            candidate.inflate(10, 10).colliderect(other)
+            for other in world.hay_bales
+            if other is not bale
+        )
+
+        if not overlaps_car and not overlaps_bale:
+            bale.topleft = candidate.topleft
+            break
+
+world.surface.fill(BG_GRASS_COLOR)
+world.draw_map()
+world.scaled_surface = pygame.transform.scale(
+    world.surface,
+    (
+        int(world.surface.get_width() * ZOOM),
+        int(world.surface.get_height() * ZOOM)
+    )
+)
 
 # Create forward-rolling tread phases from the tractor's base image.
 def make_tractor_frames(base_image):
