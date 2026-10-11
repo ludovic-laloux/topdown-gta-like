@@ -184,7 +184,6 @@ class World:
         self.surface.blit(self.flower_bed_triangle_image, self.flower_bed_triangle_rect)
         self.surface.blit(self.flower_bed_rect_image, self.flower_bed_rect_rect)
 
-
 class Player(pygame.sprite.Sprite):
     def __init__(self, pos, world):
         super().__init__()
@@ -201,62 +200,44 @@ class Player(pygame.sprite.Sprite):
         directions = ["down", "up", "left", "right"]
 
         for row, direction in enumerate(directions):
-        # =
-        # for row in range(len(directions)):
-        #         direction = directions[row]
-
             for col in range(4):
-
                 frame = sheet.subsurface(pygame.Rect(col * 32, row * 32, 32, 32))
-
-                # Scale the 32×32 frame
                 frame = pygame.transform.scale(frame, (64, 64))
-
                 self.frames[direction].append(frame)
+
         # -------------------------
         # PLAYER STATE
         # -------------------------
-
         self.direction = "down"
-
         self.frame_index = 0
         self.animation_timer = 0
 
         self.image = self.frames["down"][0]
         self.rect = self.image.get_rect(center=pos)
 
-        self.collision_mask = pygame.mask.from_surface(self.frames["down"][0])
+        # Smaller hitbox focused on the feet / lower body
+        # Tune these two numbers until it feels right
+        self.hitbox = pygame.Rect(0, 0, 36, 26)
+        self.hitbox.midbottom = self.rect.midbottom
 
-        # 300 pixels/second is roughly
-        # equivalent to your old 3 pixels/frame
-        # when running around 100 FPS.
         self.speed = 270
-
         self.movement = pygame.Vector2()
 
         self.in_car = False
         self.current_car = None
 
     def input(self):
-
         keys = pygame.key.get_pressed()
 
         self.movement.x = 0
         self.movement.y = 0
 
-        # LEFT
         if keys[pygame.K_q] or keys[pygame.K_a]:
             self.movement.x -= 1
-
-        # RIGHT
         if keys[pygame.K_d]:
             self.movement.x += 1
-
-        # UP
         if keys[pygame.K_z] or keys[pygame.K_w]:
             self.movement.y -= 1
-
-        # DOWN
         if keys[pygame.K_s]:
             self.movement.y += 1
 
@@ -264,108 +245,82 @@ class Player(pygame.sprite.Sprite):
         if self.movement.length() > 0:
             self.movement = self.movement.normalize()
 
-        player_mask = self.collision_mask
-
-        def blocked(test_rect):
-            if not self.world.rect.contains(test_rect):
+        def blocked(test_hitbox):
+            # Stay inside the world
+            if not self.world.rect.contains(test_hitbox):
                 return True
 
-            for car in cars:
-                if test_rect.colliderect(car.rect):
-                    offset = (
-                        car.rect.x - test_rect.x,
-                        car.rect.y - test_rect.y
-                    )
-                    if player_mask.overlap(car.mask, offset):
-                        return True
+            # Temporary mask representing the player's feet hitbox
+            player_mask = pygame.mask.Mask(test_hitbox.size, fill=True)
 
+            # Cars (simple rect is fine)
+            for car in cars:
+                if test_hitbox.colliderect(car.hitbox):
+                    return True
+
+            # Obstacles – use the existing masks so empty corners become walkable
             for obstacle, obstacle_mask in zip(
                 self.world.obstacles,
                 self.world.obstacle_masks
             ):
-                if test_rect.colliderect(obstacle):
+                if test_hitbox.colliderect(obstacle):
                     offset = (
-                        obstacle.x - test_rect.x,
-                        obstacle.y - test_rect.y
+                        obstacle.x - test_hitbox.x,
+                        obstacle.y - test_hitbox.y
                     )
                     if player_mask.overlap(obstacle_mask, offset):
                         return True
 
             return False
 
-        moved_rect = self.rect.copy()
-
-        # Try horizontal movement first.
-        candidate = moved_rect.copy()
+        # Horizontal
+        candidate = self.hitbox.copy()
         candidate.x += self.movement.x * self.speed * dt
         if not blocked(candidate):
-            moved_rect = candidate
+            self.hitbox = candidate
 
-        # Then try vertical movement.
-        candidate = moved_rect.copy()
+        # Vertical
+        candidate = self.hitbox.copy()
         candidate.y += self.movement.y * self.speed * dt
         if not blocked(candidate):
-            moved_rect = candidate
+            self.hitbox = candidate
 
-        self.rect = moved_rect
+        # Keep the visual sprite aligned with the feet
+        self.rect.midbottom = self.hitbox.midbottom
 
     def animate(self, dt):
-
-        # -------------------------
-        # NOT WALKING
-        # -------------------------
-
         if self.movement.length() == 0:
-
             self.frame_index = 3
-
             self.image = self.frames[self.direction][3]
-
             return
-
-        # -------------------------
-        # WALKING
-        # -------------------------
 
         self.animation_timer += dt
 
         if self.animation_timer >= 0.12:
-
             self.animation_timer = 0
-
             self.frame_index += 1
-
             if self.frame_index >= 4:
                 self.frame_index = 0
 
         self.image = self.frames[self.direction][self.frame_index]
 
     def update(self, cars, dt):
-
-        # Player is hidden while inside a car
         if self.in_car:
             return
 
-        # everything below this only happens when NOT in a car
         self.input()
 
-        # Determine which direction the character is facing.
         if self.movement.x < 0:
             self.direction = "left"
-
         elif self.movement.x > 0:
             self.direction = "right"
-
         elif self.movement.y < 0:
             self.direction = "up"
-
         elif self.movement.y > 0:
             self.direction = "down"
 
         self.move(cars, dt)
-
         self.animate(dt)
-
 
 class Tree(pygame.sprite.Sprite):
     def __init__(self, pos, image):
