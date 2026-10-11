@@ -91,9 +91,9 @@ class World:
 
         self.paths_to_houses = [
             pygame.Rect(2950, 770 , 50, 100),
+            pygame.Rect(2840, 900, 60, 15),
             pygame.Rect(2710, 3200, 60, 200),
-            pygame.Rect(2710, 3400, 290, 60),
-            pygame.Rect(2840, 900, 60, 15)
+            pygame.Rect(2710, 3380, 290, 60)
         ] 
 
         self.tree_image = pygame.image.load("graphics/tree.png").convert_alpha()
@@ -125,6 +125,17 @@ class World:
             tree = Tree((x, y), self.tree_image)
             self.trees.append(tree)
 
+        self.flower_bed_triangle_image = pygame.image.load(
+            "graphics/flower_bed_triangle.png"
+        ).convert_alpha()
+
+        self.flower_bed_triangle_rect = self.flower_bed_triangle_image.get_rect(
+            topleft=(2770, 3248)
+        )
+
+        self.flower_bed_rect_image = pygame.image.load("graphics/flower_bed_rect.png").convert_alpha()
+        self.flower_bed_rect_rect = self.flower_bed_rect_image.get_rect(topleft =(2630, 3200))
+
         self.draw_map()
 
         self.scaled_surface = pygame.transform.scale(
@@ -155,6 +166,9 @@ class World:
 
         for path in self.paths_to_houses:
             pygame.draw.rect(self.surface, ROAD_COLOR, path)
+
+        self.surface.blit(self.flower_bed_triangle_image, self.flower_bed_triangle_rect)
+        self.surface.blit(self.flower_bed_rect_image, self.flower_bed_rect_rect)
 
 class Player(pygame.sprite.Sprite):
     def __init__(self, pos, world):
