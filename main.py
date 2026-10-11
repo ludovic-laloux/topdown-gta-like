@@ -904,10 +904,12 @@ while True:
                     car.active = False
                     car.reverse_active = False
 
-                    player.rect.center = (
-                        car.rect.right + player.rect.width,
+                    # Place the player next to the car
+                    player.hitbox.midleft = (
+                        car.rect.right + 10,          # a little gap so they don't overlap
                         car.hitbox.centery
                     )
+                    player.rect.midbottom = player.hitbox.midbottom
 
                     camera_group.add(player)
                     camera_target = player
