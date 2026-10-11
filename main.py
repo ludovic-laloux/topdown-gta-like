@@ -865,7 +865,7 @@ while True:
                     car.direction -= 1
                 if event.key == pygame.K_SPACE:
                     car.active = True
-                if event.key == pygame.K_LSHIFT:
+                if event.key == pygame.K_s:
                     car.reverse_active = True
 
         if event.type == pygame.KEYUP:
@@ -878,7 +878,7 @@ while True:
                     car.direction += 1
                 if event.key == pygame.K_SPACE:
                     car.active = False
-                if event.key == pygame.K_LSHIFT:
+                if event.key == pygame.K_s:
                     car.reverse_active = False
 
         # ENTER / EXIT CAR
