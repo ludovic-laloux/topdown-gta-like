@@ -618,7 +618,7 @@ class Mission:
         self.completion_time = 0
 
         # Destination in world coordinates
-        self.destination = pygame.Rect(4200, 2500, 200, 200)
+        self.destination = pygame.Rect(4730, 2400, 200, 200)
         self.destination2 = pygame.Rect(5000, 1500, 200, 200)
 
         # Used to pause between missions
@@ -631,11 +631,10 @@ class Mission:
         # -------------------------
         if self.number == 1:
 
-            # Must be driving a car
-            if player.in_car:
-                car = player.current_car
+            # Must be walking
+            if not player.in_car:
 
-                if not self.completed and car.hitbox.colliderect(self.destination):
+                if not self.completed and player.hitbox.colliderect(self.destination):
                     self.completed = True
                     self.completion_time = pygame.time.get_ticks()
                     self.complete_timer = 2
@@ -708,7 +707,7 @@ class Mission:
         else:
 
             if self.number == 1:
-                message = "MISSION 1: Drive to the marked location"
+                message = "MISSION 1: Walk to the marked location"
 
             elif self.number == 2:
                 message = "MISSION 2: Get out and walk to the marked location"
