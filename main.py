@@ -3,7 +3,6 @@ import pygame, sys, random
 # SETTINGS
 SCREEN_WIDTH = 1280
 SCREEN_HEIGHT = 720
-CAR_START_POS = (3320, 3900)
 BG_GRASS_COLOR = (120, 150, 80)
 FIELD_COLOR = (100,140,20)
 ROAD_COLOR = (80,80,70)
@@ -753,15 +752,19 @@ tractor_driver = "graphics/tractor/tractor_with_player_1.png"
 tractor_car = Car((5000, 2500), world, tractor, (-100, -100), 400, 400, tractor_driver)
 
 cars = [
-    Car((CAR_START_POS), world, buggy, (-50, -50), 1200, 1200, buggy_driver),
-    Car((2900,3300), world, "graphics/circlus_grey.png", (-20, -20), 900, 500),
+    Car((4800, 3570), world, buggy, (-50, -50), 1200, 1200, buggy_driver),
+    Car((2900, 3300), world, "graphics/circlus_grey.png", (-20, -20), 900, 500),
     tractor_car,
     Car((2900, 1000), world, "graphics/Jeep.png", (-60,-60), 1000, 1000),
     Car((2700, 1000), world, "graphics/bouboul.png", (-20, -20), 600, 200),
-    Car((3430,2500), world, "graphics/audi_v2.png", (-20, -20), 900, 500),
-    Car((3430,2300), world, "graphics/audi_v3.png", (-20, -20), 900, 500),
-    Car((3430,2100), world, "graphics/circlus_red.png", (-20, -20), 900, 500)
+    Car((3430, 2500), world, "graphics/audi_v2.png", (-20, -20), 900, 500),
+    Car((3430, 2300), world, "graphics/audi_v3.png", (-20, -20), 900, 500),
+    Car((3430, 2100), world, "graphics/circlus_red.png", (-20, -20), 900, 500)
 ]
+
+cars[0].angle = -90
+cars[0].image, cars[0].rect, cars[0].mask = cars[0].build_image(cars[0].angle)
+cars[0].get_rotation()
 
 # Move only the bales that landed on a car, keeping the spacing between bales
 for bale in world.hay_bales:
@@ -845,7 +848,7 @@ tractor_car.animation_timer = 0
 tractor_car.animation_index = 0
 
 # PLAYER SETUP
-player = Player((CAR_START_POS[0] + 80, CAR_START_POS[1]), world)
+player = Player((4300,1000), world)
 
 # CAMERA SETUP
 for car in cars:
