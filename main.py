@@ -17,12 +17,14 @@ class World:
 
         self.rect = self.surface.get_rect(topleft = (0, 0))
 
-        self.wheat_rect = pygame.Rect(3400, 400, 2100, 2800)   # island between the four roads
+        self.island_rect = pygame.Rect(3400, 400, 2100, 2800)    # whole island between the roads
+        self.grass_border = 40
+        self.wheat_rect = self.island_rect.inflate(-2 * self.grass_border, -2 * self.grass_border)
 
         self.roads = [
                     pygame.Rect(3000, 0, 400, 4000),
                     pygame.Rect(3400, 100, 2400, 300),
-                    pygame.Rect(5500, 100, 300, 3400),
+                    pygame.Rect(5500, 0, 300, 3400),
                     pygame.Rect(3400, 3200, 2400, 300)
                 ]
 
@@ -43,7 +45,7 @@ class World:
                 if (
                     not any(check_field.colliderect(field) for field in self.fields)
                     and not any(new_field.colliderect(road) for road in self.roads)
-                    and not new_field.colliderect(self.wheat_rect)
+                    and not new_field.colliderect(self.island_rect)
                 ):
                     break
                 
@@ -144,7 +146,7 @@ class World:
                     and not any(tree_rect.colliderect(obstacle) for obstacle in self.obstacles) 
                     and not any(tree_rect.colliderect(path) for path in self.paths_to_houses)
                     and not any(tree_rect.inflate(40, 40).colliderect(tree.rect) for tree in self.trees)
-                    and not tree_rect.colliderect(self.wheat_rect)
+                    and not tree_rect.colliderect(self.island_rect)
                 ):
                     break
                 
@@ -157,18 +159,32 @@ class World:
             self.surface,(int(self.surface.get_width() * ZOOM), int(self.surface.get_height() * ZOOM))
             )
 
+    def fill_tiled(self, rect, tile):
+        self.surface.set_clip(rect)
+        for x in range(rect.left, rect.right, tile.get_width()):
+            for y in range(rect.top, rect.bottom, tile.get_height()):
+                self.surface.blit(tile, (x, y))
+        self.surface.set_clip(None)
+
     def draw_map(self):
 
         for field in self.fields:
             pygame.draw.rect(self.surface, FIELD_COLOR, field)
 
-        tile = pygame.image.load("graphics/wheat_tile.png").convert()
+        grass_tile = pygame.image.load("graphics/grass_tile.png").convert()
+        dirt_tile = pygame.image.load("graphics/dirt_tile.png").convert()
+        wheat_tile = pygame.image.load("graphics/wheat_tile.png").convert()
 
-        self.surface.set_clip(self.wheat_rect)
-        for x in range(self.wheat_rect.left, self.wheat_rect.right, tile.get_width()):
-            for y in range(self.wheat_rect.top, self.wheat_rect.bottom, tile.get_height()):
-                self.surface.blit(tile, (x, y))
-        self.surface.set_clip(None)
+        self.fill_tiled(self.island_rect, grass_tile)  # grass border
+        self.fill_tiled(self.wheat_rect, wheat_tile)   # wheat center
+
+        pygame.draw.rect(self.surface, (95, 135, 60), self.island_rect, 4)
+
+        upper_dirt_rect = pygame.Rect(3400, 0, 2100, 100)
+        self.fill_tiled(upper_dirt_rect, dirt_tile)
+
+        field_dirt_rect = pygame.Rect(4700, 2200, 800, 200)
+        self.fill_tiled(field_dirt_rect, dirt_tile)
 
         for bale in self.hay_bales:
             self.surface.blit(self.hay_bale_image, bale.topleft)
