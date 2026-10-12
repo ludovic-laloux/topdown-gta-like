@@ -386,6 +386,7 @@ class Car(pygame.sprite.Sprite):
         self.forward = pygame.math.Vector2(0, -1)
         
         self.speed = 0
+        self.push_remainder = pygame.Vector2()
         self.acceleration = 400
         self.friction = 500
         self.brake = 1500
@@ -454,6 +455,65 @@ class Car(pygame.sprite.Sprite):
     def get_rotation(self):
         self.forward = pygame.Vector2(0, -1).rotate(-self.angle)
 
+    def try_push_car(self, target, displacement, proposed_rect, cars):
+        """Push an aligned car ahead when this car hits it front-to-rear."""
+        if displacement.length_squared() == 0:
+            return False
+
+        travel_direction = displacement.normalize()
+        between = pygame.Vector2(target.rect.center) - pygame.Vector2(self.rect.center)
+
+        # Reject side impacts. Only push a car that is ahead along the
+        # direction of travel and roughly in line with this car.
+        forward_distance = between.dot(travel_direction)
+        sideways_distance = abs(between.dot(travel_direction.rotate(90)))
+        lateral_tolerance = (self.original_image.get_width() + target.original_image.get_width()) * 0.3
+
+        if forward_distance <= 0 or sideways_distance > lateral_tolerance:
+            return False
+
+        # Transfer a shove at 20% of the pushing car's current speed.
+        # The pushing car waits until there is room to advance.
+        requested_push = (
+            travel_direction * (abs(self.speed) * 0.2 * dt)
+            + target.push_remainder
+        )
+        push = pygame.Vector2(round(requested_push.x), round(requested_push.y))
+        if push.length_squared() == 0:
+            target.push_remainder = requested_push
+            return False
+        pushed_hitbox = target.hitbox.copy()
+        pushed_hitbox.centerx += round(push.x)
+        pushed_hitbox.centery += round(push.y)
+        pushed_rect = target.rect.copy()
+        pushed_rect.center = pushed_hitbox.center
+
+        if not self.world.rect.contains(pushed_hitbox):
+            return False
+        if target.hits_obstacle(pushed_rect, target.mask):
+            return False
+
+        for other in cars:
+            if other is self or other is target:
+                continue
+            if pushed_rect.colliderect(other.rect):
+                offset = (other.rect.x - pushed_rect.x, other.rect.y - pushed_rect.y)
+                if pygame.mask.from_surface(target.image).overlap(other.mask, offset):
+                    return False
+
+        target.hitbox = pushed_hitbox
+        target.rect.center = pushed_hitbox.center
+        target.push_remainder = requested_push - push
+
+        # If the target still blocks the proposed movement, it has been nudged
+        # but the pushing car must remain in place for this frame.
+        if pushed_rect.colliderect(proposed_rect):
+            offset = (proposed_rect.x - pushed_rect.x, proposed_rect.y - pushed_rect.y)
+            if target.mask.overlap(self.mask, offset):
+                return False
+
+        return True
+
     def set_driver(self, visible):
         self.driver_visible = bool(visible and self.driver_image)
 
@@ -509,7 +569,22 @@ class Car(pygame.sprite.Sprite):
             return
 
         if self.hits_car(new_rect, self.mask, cars):
-            return
+            pushed_a_car = False
+
+            for car in cars:
+                if car is self or not new_rect.colliderect(car.rect):
+                    continue
+
+                offset = (car.rect.x - new_rect.x, car.rect.y - new_rect.y)
+                if not self.mask.overlap(car.mask, offset):
+                    continue
+
+                if self.try_push_car(car, self.forward * self.speed * dt, new_rect, cars):
+                    pushed_a_car = True
+                    break
+
+            if not pushed_a_car:
+                return
 
         if self.world.rect.contains(new_hitbox):
             self.hitbox = new_hitbox
