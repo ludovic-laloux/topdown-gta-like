@@ -27,6 +27,8 @@ class World:
                     pygame.Rect(3400, 3200, 2400, 300)
                 ]
 
+        self.field_dirt_rect = pygame.Rect(4700, 2200, 800, 200)
+
         self.fields = []
 
         for i in range(10):
@@ -55,7 +57,9 @@ class World:
 
         self.hay_bales = []
 
-        for _ in range(18):
+        self.hay_bales = []
+
+        for _ in range(10):
             width, height = 48, 96
 
             while True:
@@ -63,9 +67,12 @@ class World:
                 y = random.randint(self.wheat_rect.top, self.wheat_rect.bottom - height)
                 new_bale = pygame.Rect(x, y, width, height)
 
-                if not any(
-                    new_bale.inflate(600, 600).colliderect(bale)
-                    for bale in self.hay_bales
+                if (
+                    not any(
+                        new_bale.inflate(600, 600).colliderect(bale)
+                        for bale in self.hay_bales
+                    )
+                    and not new_bale.colliderect(self.field_dirt_rect)
                 ):
                     self.hay_bales.append(new_bale)
                     break
@@ -182,8 +189,7 @@ class World:
         upper_dirt_rect = pygame.Rect(3400, 0, 2100, 100)
         self.fill_tiled(upper_dirt_rect, dirt_tile)
 
-        field_dirt_rect = pygame.Rect(4700, 2200, 800, 200)
-        self.fill_tiled(field_dirt_rect, dirt_tile)
+        self.fill_tiled(self.field_dirt_rect, dirt_tile)
 
         for bale in self.hay_bales:
             self.surface.blit(self.hay_bale_image, bale.topleft)
@@ -839,15 +845,22 @@ cars[0].angle = -90
 cars[0].image, cars[0].rect, cars[0].mask = cars[0].build_image(cars[0].angle)
 cars[0].get_rotation()
 
-# Move only the bales that landed on a car, keeping the spacing between bales
+# PLAYER SETUP
+player = Player((4300,1000), world)
+
+# Move bales that overlap a car, the player, or the dirt area.
 for bale in world.hay_bales:
-    while any(bale.inflate(10, 10).colliderect(car.rect) for car in cars):
+    while (
+        any(bale.inflate(10, 10).colliderect(car.rect) for car in cars)
+        or bale.inflate(10, 10).colliderect(player.hitbox)
+        or bale.colliderect(world.field_dirt_rect)
+    ):
         while True:
             candidate = pygame.Rect(
                 random.randint(world.wheat_rect.left, world.wheat_rect.right - bale.width),
                 random.randint(world.wheat_rect.top, world.wheat_rect.bottom - bale.height),
                 bale.width,
-                bale.height
+                bale.height,
             )
 
             far_enough = not any(
@@ -855,8 +868,14 @@ for bale in world.hay_bales:
                 for other in world.hay_bales
                 if other is not bale
             )
+            clear_of_cars = not any(
+                candidate.inflate(10, 10).colliderect(car.rect)
+                for car in cars
+            )
+            clear_of_player = not candidate.inflate(10, 10).colliderect(player.hitbox)
+            clear_of_dirt = not candidate.colliderect(world.field_dirt_rect)
 
-            if far_enough:
+            if far_enough and clear_of_cars and clear_of_player and clear_of_dirt:
                 bale.topleft = candidate.topleft
                 break
 
@@ -919,9 +938,6 @@ tractor_car.animation_frames = make_tractor_frames(tractor_car.normal_image)
 tractor_car.driver_animation_frames = make_tractor_frames(tractor_car.driver_image)
 tractor_car.animation_timer = 0
 tractor_car.animation_index = 0
-
-# PLAYER SETUP
-player = Player((4300,1000), world)
 
 # CAMERA SETUP
 for car in cars:
