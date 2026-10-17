@@ -404,6 +404,8 @@ class Car(pygame.sprite.Sprite):
 
         self.hitbox = self.rect.inflate(*hitbox_inflate)
 
+        self.pos = pygame.Vector2(self.hitbox.center)
+
         self.active = False # self.active = True means player commands car to accelerate ie presses arrow up
         self.reverse_active = False
 
@@ -508,6 +510,7 @@ class Car(pygame.sprite.Sprite):
                     return False
 
         target.hitbox = pushed_hitbox
+        target.pos = pygame.Vector2(target.hitbox.center)
         target.rect.center = pushed_hitbox.center
         target.push_remainder = requested_push - push
 
@@ -565,8 +568,10 @@ class Car(pygame.sprite.Sprite):
             elif self.speed < 0:
                 self.speed = min(self.speed + self.friction * dt, 0)
 
+        new_pos = self.pos + self.forward * self.speed * dt
+
         new_hitbox = self.hitbox.copy()
-        new_hitbox.center += self.forward * self.speed * dt
+        new_hitbox.center = (round(new_pos.x), round(new_pos.y))
 
         new_rect = self.rect.copy()
         new_rect.center = new_hitbox.center
@@ -595,6 +600,7 @@ class Car(pygame.sprite.Sprite):
                 return
 
         if self.world.rect.contains(new_hitbox):
+            self.pos = new_pos
             self.hitbox = new_hitbox
             self.rect.center = self.hitbox.center
 
@@ -824,8 +830,6 @@ for tree in world.trees:
 # SOUND SETUP
 bg_birdsounds = pygame.mixer.Sound("sounds/morning_birds.mp3")
 bg_birdsounds.play(loops = -1)
-bg_birdsounds.set_volume(1)
-
 
 # VEHICLE GRAPHICS
 buggy = "graphics/buggy/buggy.png"
@@ -835,14 +839,14 @@ tractor = "graphics/tractor/tractor_1.png"
 tractor_driver = "graphics/tractor/tractor_with_player_1.png"
 
 # VEHICLE SETUP
-tractor_car = Car((5000, 2500), world, tractor, (-100, -100), 200, 200, tractor_driver)
+tractor_car = Car((5000, 2500), world, tractor, (-100, -100), 300, 300, tractor_driver)
 
 cars = [
     Car((4800, 3570), world, buggy, (-50, -50), 1200, 1200, buggy_driver),
     Car((2900, 3300), world, "graphics/circlus_grey.png", (-20, -20), 900, 500),
     tractor_car,
     Car((2900, 1000), world, "graphics/Jeep.png", (-60,-60), 1000, 1000),
-    Car((2700, 1000), world, "graphics/bouboul.png", (-20, -20), 600, 200),
+    Car((2700, 1000), world, "graphics/bouboul.png", (-20, -20), 600, 600),
     Car((3430, 2500), world, "graphics/audi_v2.png", (-20, -20), 900, 500),
     Car((3430, 2300), world, "graphics/audi_v3.png", (-20, -20), 900, 500),
     Car((3430, 2100), world, "graphics/circlus_red.png", (-20, -20), 900, 500)
