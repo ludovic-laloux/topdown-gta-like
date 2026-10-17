@@ -461,7 +461,7 @@ class Car(pygame.sprite.Sprite):
     def get_rotation(self):
         self.forward = pygame.Vector2(0, -1).rotate(-self.angle)
 
-    def try_push_car(self, target, displacement, proposed_rect, cars):
+    def try_push_car(self, target, displacement, proposed_rect, cars, dt):
         """Push an aligned car ahead when this car hits it front-to-rear."""
         if displacement.length_squared() == 0:
             return False
@@ -585,7 +585,9 @@ class Car(pygame.sprite.Sprite):
                 if not self.mask.overlap(car.mask, offset):
                     continue
 
-                if self.try_push_car(car, self.forward * self.speed * dt, new_rect, cars):
+                if self.try_push_car(
+                    car, self.forward * self.speed * dt, new_rect, cars, dt
+                ):                    
                     pushed_a_car = True
                     break
 
@@ -820,8 +822,9 @@ for tree in world.trees:
     camera_group.add(tree)
 
 # SOUND SETUP
-bg_birdsounds = pygame.mixer.Sound("sounds/morning_birds.wav")
+bg_birdsounds = pygame.mixer.Sound("sounds/morning_birds.mp3")
 bg_birdsounds.play(loops = -1)
+bg_birdsounds.set_volume(1)
 
 
 # VEHICLE GRAPHICS
