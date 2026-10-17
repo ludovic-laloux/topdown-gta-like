@@ -819,6 +819,10 @@ mission = Mission()
 for tree in world.trees:
     camera_group.add(tree)
 
+# SOUND SETUP
+bg_birdsounds = pygame.mixer.Sound("sounds/morning_birds.wav")
+bg_birdsounds.play(loops = -1)
+
 
 # VEHICLE GRAPHICS
 buggy = "graphics/buggy/buggy.png"
