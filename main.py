@@ -245,7 +245,7 @@ class Player(pygame.sprite.Sprite):
 
         self.pos = pygame.Vector2(self.hitbox.topleft)
 
-        self.speed = 270
+        self.speed = 180
         self.movement = pygame.Vector2()
 
         self.in_car = False
@@ -837,6 +837,11 @@ for tree in world.trees:
 bg_birdsounds = pygame.mixer.Sound("sounds/morning_birds.mp3")
 bg_birdsounds.play(loops = -1)
 
+engine_sound = pygame.mixer.Sound("sounds/engine_loop.ogg")
+engine_sound.set_volume(0)
+engine_sound.play(loops = -1)
+engine_volume = 0
+
 # VEHICLE GRAPHICS
 buggy = "graphics/buggy/buggy.png"
 buggy_driver = "graphics/buggy/buggy_with_player.png"
@@ -1068,6 +1073,18 @@ while True:
     player.update(cars, dt)
     mission.update(player, dt)
 
+    # ENGINE SOUND
+    target_volume = 0
+    if player.in_car and player.current_car:
+        car = player.current_car
+        if car.active or car.reverse_active:
+            target_volume = 1    # pedal pressed
+        elif car.speed != 0:
+            target_volume = 0.4    # coasting
+
+    # smooth fade so it doesn't cut abruptly
+    engine_volume += (target_volume - engine_volume) * min(1, 8 * dt)
+    engine_sound.set_volume(engine_volume)
 
     # DRAW
     camera_group.custom_draw(camera_target)
