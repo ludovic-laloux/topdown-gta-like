@@ -243,6 +243,8 @@ class Player(pygame.sprite.Sprite):
         self.hitbox.midbottom = self.rect.midbottom
         self.feet_mask = pygame.mask.Mask(self.hitbox.size, fill=True)
 
+        self.pos = pygame.Vector2(self.hitbox.topleft)
+
         self.speed = 270
         self.movement = pygame.Vector2()
 
@@ -305,15 +307,19 @@ class Player(pygame.sprite.Sprite):
             self.movement = self.movement.normalize()
 
         # Horizontal
+        new_x = self.pos.x + self.movement.x * self.speed * dt
         candidate = self.hitbox.copy()
-        candidate.x += self.movement.x * self.speed * dt
+        candidate.x = round(new_x)
         if not self.is_blocked(candidate, cars):
+            self.pos.x = new_x
             self.hitbox = candidate
 
         # Vertical
+        new_y = self.pos.y + self.movement.y * self.speed * dt
         candidate = self.hitbox.copy()
-        candidate.y += self.movement.y * self.speed * dt
+        candidate.y = round(new_y)
         if not self.is_blocked(candidate, cars):
+            self.pos.y = new_y
             self.hitbox = candidate
 
         # Keep the visual sprite aligned with the feet
@@ -846,7 +852,7 @@ cars = [
     Car((2900, 3300), world, "graphics/circlus_grey.png", (-20, -20), 900, 500),
     tractor_car,
     Car((2900, 1000), world, "graphics/Jeep.png", (-60,-60), 1000, 1000),
-    Car((2700, 1000), world, "graphics/bouboul.png", (-20, -20), 600, 600),
+    Car((2700, 1000), world, "graphics/bouboul.png", (-20, -20), 600, 300),
     Car((3430, 2500), world, "graphics/audi_v2.png", (-20, -20), 900, 500),
     Car((3430, 2300), world, "graphics/audi_v3.png", (-20, -20), 900, 500),
     Car((3430, 2100), world, "graphics/circlus_red.png", (-20, -20), 900, 500)
@@ -1047,6 +1053,7 @@ while True:
                         car.reverse_active = False
 
                         player.hitbox = spot
+                        player.pos = pygame.Vector2(spot.topleft)
                         player.rect.midbottom = player.hitbox.midbottom
 
                         camera_group.add(player)
