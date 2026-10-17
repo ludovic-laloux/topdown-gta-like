@@ -817,6 +817,52 @@ class Mission:
 
             surface.blit(text, (30, 30))
 
+    def current_destination(self):
+        if self.completed:
+            return None
+        if self.number == 1:
+            return self.destination
+        if self.number == 2:
+            return self.destination2
+        return None
+
+def draw_minimap(surface, target, mission):
+    R = MINIMAP_RADIUS
+    cx = SCREEN_WIDTH - R - MINIMAP_MARGIN
+    cy = SCREEN_HEIGHT - R - MINIMAP_MARGIN
+
+    # Player position on the shrunken world
+    px = target.rect.centerx * MINIMAP_SCALE
+    py = target.rect.centery * MINIMAP_SCALE
+
+    # Draw the part of the map around the player, then cut it into a circle
+    minimap_view.fill((25, 25, 25, 255))
+    minimap_view.blit(minimap_world, (R - px, R - py))
+    minimap_view.blit(minimap_mask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+
+    surface.blit(minimap_view, (cx - R, cy - R))
+
+    # Mission objective: clamped to the rim when it's out of view
+    destination = mission.current_destination()
+    if destination:
+        offset = pygame.Vector2(
+            destination.centerx * MINIMAP_SCALE - px,
+            destination.centery * MINIMAP_SCALE - py,
+        )
+        max_dist = R - 8
+        if offset.length() > max_dist:
+            offset.scale_to_length(max_dist)
+
+        pos = (int(cx + offset.x), int(cy + offset.y))
+        pygame.draw.circle(surface, (255, 255, 255), pos, 7)
+        pygame.draw.circle(surface, (100, 0, 255), pos, 5)
+
+    # Player is always in the center
+    pygame.draw.circle(surface, (255, 255, 255), (cx, cy), 6)
+    pygame.draw.circle(surface, (220, 30, 30), (cx, cy), 4)
+
+    # Border
+    pygame.draw.circle(surface, (255, 255, 255), (cx, cy), R, 3)
 
 # INIT
 pygame.init()
@@ -911,6 +957,26 @@ world.scaled_surface = pygame.transform.scale(
     )
 )
 
+# MINIMAP SETUP
+MINIMAP_RADIUS = 45            
+MINIMAP_SCALE = 0.075               
+MINIMAP_MARGIN = 20
+MINIMAP_SCALE = 0.15                 # minimap px per world px (bigger = more zoomed in)
+MINIMAP_D = MINIMAP_RADIUS * 2
+
+# whole world shrunk once (6000x4000 -> 900x600)
+minimap_world = pygame.transform.smoothscale(
+    world.surface,
+    (int(world.rect.width * MINIMAP_SCALE), int(world.rect.height * MINIMAP_SCALE))
+)
+
+# reusable surfaces
+minimap_view = pygame.Surface((MINIMAP_D, MINIMAP_D), pygame.SRCALPHA)
+minimap_mask = pygame.Surface((MINIMAP_D, MINIMAP_D), pygame.SRCALPHA)
+minimap_mask.fill((0, 0, 0, 0))
+pygame.draw.circle(minimap_mask, (255, 255, 255, 255), (MINIMAP_RADIUS, MINIMAP_RADIUS), MINIMAP_RADIUS)
+
+# TRACTOR MOVING WHEELS
 # Create forward-rolling tread phases from the tractor's base image.
 def make_tractor_frames(base_image):
     source = base_image.copy()
@@ -1091,5 +1157,6 @@ while True:
 
     mission.draw(screen, camera_group)
     mission.draw_ui(screen)
+    draw_minimap(screen, camera_target, mission)
 
     pygame.display.update()
