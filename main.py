@@ -828,7 +828,7 @@ tractor = "graphics/tractor/tractor_1.png"
 tractor_driver = "graphics/tractor/tractor_with_player_1.png"
 
 # VEHICLE SETUP
-tractor_car = Car((5000, 2500), world, tractor, (-100, -100), 400, 400, tractor_driver)
+tractor_car = Car((5000, 2500), world, tractor, (-100, -100), 200, 200, tractor_driver)
 
 cars = [
     Car((4800, 3570), world, buggy, (-50, -50), 1200, 1200, buggy_driver),
