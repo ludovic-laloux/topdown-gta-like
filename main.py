@@ -846,7 +846,7 @@ cars[0].image, cars[0].rect, cars[0].mask = cars[0].build_image(cars[0].angle)
 cars[0].get_rotation()
 
 # PLAYER SETUP
-player = Player((4300,1000), world)
+player = Player((4350,1000), world)
 
 # Move bales that overlap a car, the player, or the dirt area.
 for bale in world.hay_bales:
