@@ -415,6 +415,9 @@ class Car(pygame.sprite.Sprite):
         self.active = False # self.active = True means player commands car to accelerate ie presses arrow up
         self.reverse_active = False
 
+        self.engine_sound = None
+        self.engine_volume = 0
+
         self.world = world
 
     def set_rotation(self, cars, dt):
@@ -883,10 +886,16 @@ for tree in world.trees:
 bg_birdsounds = pygame.mixer.Sound("sounds/morning_birds.mp3")
 bg_birdsounds.play(loops = -1)
 
-engine_sound = pygame.mixer.Sound("sounds/engine_loop.ogg")
-engine_sound.set_volume(0)
-engine_sound.play(loops = -1)
-engine_volume = 0
+car_engine_sound = pygame.mixer.Sound("sounds/car_engine_loop.ogg")
+car_engine_sound.set_volume(0)
+
+tractor_engine_sound = pygame.mixer.Sound("sounds/tractor_engine_loop.wav")
+tractor_engine_sound.set_volume(0)
+tractor_engine_volume = 0
+
+buggy_engine_sound = pygame.mixer.Sound("sounds/buggy_engine_loop.wav")
+buggy_engine_sound.set_volume(0)
+buggy_engine_volume = 0
 
 # VEHICLE GRAPHICS
 buggy = "graphics/buggy/buggy.png"
@@ -912,6 +921,23 @@ cars = [
 cars[0].angle = -90
 cars[0].image, cars[0].rect, cars[0].mask = cars[0].build_image(cars[0].angle)
 cars[0].get_rotation()
+
+cars[0].engine_sound = buggy_engine_sound
+tractor_car.engine_sound = tractor_engine_sound
+
+cars[0].engine_gain = 1.0       # buggy
+tractor_car.engine_gain = 1.0   # tractor
+
+for car in cars:
+    if car.engine_sound is None:
+        car.engine_sound = pygame.mixer.Sound("sounds/car_engine_loop.ogg")
+        car.engine_sound.play(loops=-1)
+        pygame.mixer.set_num_channels(len(cars) + 1)
+        car.engine_gain = 2.5   # regular cars: louder
+    else:
+        car.engine_sound.play(loops=-1)
+
+    car.engine_sound.set_volume(0)
 
 # PLAYER SETUP
 player = Player((4350,1000), world)
@@ -1140,17 +1166,23 @@ while True:
     mission.update(player, dt)
 
     # ENGINE SOUND
-    target_volume = 0
-    if player.in_car and player.current_car:
-        car = player.current_car
-        if car.active or car.reverse_active:
-            target_volume = 1    # pedal pressed
-        elif car.speed != 0:
-            target_volume = 0.4    # coasting
+    for car in cars:
+        target_volume = 0
 
-    # smooth fade so it doesn't cut abruptly
-    engine_volume += (target_volume - engine_volume) * min(1, 8 * dt)
-    engine_sound.set_volume(engine_volume)
+        if player.in_car and player.current_car is car:
+            if car.active or car.reverse_active:
+                target_volume = 0.25  # pedal pressed
+            elif car.speed != 0:
+                target_volume = 0.1  # coasting
+
+        target_volume = min(1.0, target_volume * car.engine_gain)
+
+        car.engine_volume += (target_volume - car.engine_volume) * min(1, 8 * dt)
+        car.engine_sound.set_volume(car.engine_volume)
+        
+        # smooth fade so it doesn't cut abruptly
+        car.engine_volume += (target_volume - car.engine_volume) * min(1, 8 * dt)
+        car.engine_sound.set_volume(car.engine_volume)
 
     # DRAW
     camera_group.custom_draw(camera_target)
