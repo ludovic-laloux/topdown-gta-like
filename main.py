@@ -8,12 +8,58 @@ FIELD_COLOR = (100,140,20)
 ROAD_COLOR = (80,80,70)
 BALE_COLOR = (156, 36, 11)
 ZOOM = 0.75
+DAY_LENGTH_SECONDS = 120
+START_HOUR = 13.0
 
-# One complete in-game day lasts 10 real minutes. Change this to tune the pace.
-DAY_LENGTH_SECONDS = 600
-START_HOUR = 8.0
-DAY_LENGTH_SECONDS = 60
-START_HOUR = 12.0
+
+class DayNightCycle:
+    """A simple 24-hour clock with a smooth ambient color overlay."""
+
+    # (hour, tint RGB, tint opacity). Clear midday uses zero opacity.
+    KEYFRAMES = (
+        (0.0, (20, 28, 72), 115),
+        (4.5, (30, 38, 82), 105),
+        (6.0, (255, 120, 55), 62),
+        (8.0, (255, 190, 110), 20),
+        (9.0, (0, 0, 0), 0),
+        (16.0, (0, 0, 0), 0),
+        (18.0, (255, 135, 65), 48),
+        (20.0, (55, 55, 115), 82),
+        (24.0, (20, 28, 72), 115),
+    )
+
+    def __init__(self, screen_size, day_length_seconds=DAY_LENGTH_SECONDS, start_hour=START_HOUR):
+        self.day_length_seconds = day_length_seconds
+        self.hour = start_hour % 24
+        self.overlay = pygame.Surface(screen_size, pygame.SRCALPHA)
+        self.clock_font = pygame.font.Font(None, 28)
+
+    def update(self, dt):
+        self.hour = (self.hour + dt * 24 / self.day_length_seconds) % 24
+
+    def _tint(self):
+        hour = self.hour
+        for index in range(len(self.KEYFRAMES) - 1):
+            start_hour, start_color, start_alpha = self.KEYFRAMES[index]
+            end_hour, end_color, end_alpha = self.KEYFRAMES[index + 1]
+            if start_hour <= hour <= end_hour:
+                amount = (hour - start_hour) / (end_hour - start_hour)
+                color = tuple(round(a + (b - a) * amount) for a, b in zip(start_color, end_color))
+                alpha = round(start_alpha + (end_alpha - start_alpha) * amount)
+                return color, alpha
+        return (0, 0, 0), 0
+
+    def draw(self, screen):
+        color, alpha = self._tint()
+        if alpha:
+            self.overlay.fill((*color, alpha))
+            screen.blit(self.overlay, (0, 0))
+
+        hours = int(self.hour)
+        minutes = int((self.hour - hours) * 60)
+        label = self.clock_font.render(f"{hours:02d}:{minutes:02d}", True, (255, 255, 255))
+        box = pygame.Rect(SCREEN_WIDTH - 112, 18, 94, 38)
+        pygame.draw.rect(screen, (20, 20, 25), box, border_radius=6)
 
 
 class DayNightCycle:
@@ -68,16 +114,21 @@ class DayNightCycle:
 
 
 class WeatherSystem:
-    """Mostly clear weather with occasional, intense rainstorms and fog."""
+    """Occasional rainstorms and thick fog during the morning hours."""
 
-    STORM_CHANCE_PER_DAY = 0.25
+    STORM_CHANCE_PER_DAY = 1
+    MORNING_FOG_START_HOUR = 5.0
+    MORNING_FOG_END_HOUR = 9.0
+    MORNING_FOG_FADE_HOURS = 0.75
     STORM_MIN_HOURS = 2.5
     STORM_MAX_HOURS = 5.5
     STORM_FADE_HOURS = 0.75
     RAIN_DROP_COUNT = 1100
+    FOG_CLOUD_COUNT = 14
 
-    def __init__(self, screen_size, day_length_seconds, start_hour):
+    def __init__(self, screen_size, day_length_seconds, start_hour, world_size):
         self.width, self.height = screen_size
+        self.world_width, self.world_height = world_size
         self.day_length_seconds = day_length_seconds
         self.elapsed_game_hours = float(start_hour)
         self.current_day = int(self.elapsed_game_hours // 24)
@@ -85,29 +136,64 @@ class WeatherSystem:
         self.storms = {}
         self._schedule_day(self.current_day)
         self.intensity = 0.0
+        self.fog_only_intensity = 0.0
 
         self.fog_layer = pygame.Surface(screen_size, pygame.SRCALPHA)
         self.rain_layer = pygame.Surface(screen_size, pygame.SRCALPHA)
+        self.fog_clouds = []
+        for _ in range(self.FOG_CLOUD_COUNT):
+            cloud_width = self.rng.randint(520, 900)
+            cloud_height = self.rng.randint(320, 600)
+            cloud_world_image = self._make_fog_cloud(cloud_width, cloud_height)
+            cloud_image = pygame.transform.smoothscale(
+                cloud_world_image, (round(cloud_width * ZOOM), round(cloud_height * ZOOM))
+            )
+            self.fog_clouds.append({
+                "image": cloud_image,
+                "world_width": cloud_width,
+                "x": self.rng.uniform(-cloud_width, self.world_width),
+                "y": self.rng.uniform(-cloud_height / 2, self.world_height - cloud_height / 2),
+                "speed": self.rng.choice((-1, 1)) * self.rng.uniform(28, 60),
+            })
         self.rain_drops = [
             [self.rng.uniform(0, self.width), self.rng.uniform(0, self.height),
              self.rng.uniform(14, 30), self.rng.uniform(850, 1450)]
             for _ in range(self.RAIN_DROP_COUNT)
         ]
 
-    def _schedule_day(self, day):
-        # Three days out of four are usually clear. The first possible storm
-        # starts after the noon start time so the game opens in sunshine.
-        if self.rng.random() >= self.STORM_CHANCE_PER_DAY:
-            self.storms[day] = None
-            return
+    def _make_fog_cloud(self, width, height):
+        """Build a soft-edged fog bank from nested translucent ellipses."""
+        cloud = pygame.Surface((width, height), pygame.SRCALPHA)
+        bands = 40
+        for band in range(bands, 0, -1):
+            scale = band / bands
+            ellipse_width = max(1, round(width * scale))
+            ellipse_height = max(1, round(height * scale))
+            rect = pygame.Rect(0, 0, ellipse_width, ellipse_height)
+            rect.center = (width // 2, height // 2)
+            alpha = round(8 + 190 * (1 - scale))
+            pygame.draw.ellipse(cloud, (205, 215, 225, alpha), rect)
+        return cloud
 
+    def _schedule_day(self, day):
+        # Schedule occasional rainstorms; morning fog follows the daily clock.
         earliest_hour = 14 if day == 0 else 0
-        start = day * 24 + self.rng.uniform(earliest_hour, 24)
-        duration = self.rng.uniform(self.STORM_MIN_HOURS, self.STORM_MAX_HOURS)
-        self.storms[day] = (start, start + duration)
+        storm = None
+        if self.rng.random() < self.STORM_CHANCE_PER_DAY:
+            start = day * 24 + self.rng.uniform(earliest_hour, 24)
+            duration = self.rng.uniform(self.STORM_MIN_HOURS, self.STORM_MAX_HOURS)
+            storm = (start, start + duration)
+        self.storms[day] = storm
+
 
     def update(self, dt):
         self.elapsed_game_hours += dt * 24 / self.day_length_seconds
+        for bank in self.fog_clouds:
+            bank["x"] += bank["speed"] * dt
+            if bank["speed"] > 0 and bank["x"] > self.world_width:
+                bank["x"] = -bank["world_width"]
+            elif bank["speed"] < 0 and bank["x"] + bank["world_width"] < 0:
+                bank["x"] = self.world_width
         new_day = int(self.elapsed_game_hours // 24)
         while self.current_day < new_day:
             self.current_day += 1
@@ -125,8 +211,18 @@ class WeatherSystem:
                 fade_in = min(1.0, (self.elapsed_game_hours - start) / self.STORM_FADE_HOURS)
                 fade_out = min(1.0, (end - self.elapsed_game_hours) / self.STORM_FADE_HOURS)
                 target = max(target, min(fade_in, fade_out))
-        # Drive the effects directly from the storm's gradual fade curve.
         self.intensity = target
+
+        # Thick fog returns every morning, independently of the rain schedule.
+        morning_hour = self.elapsed_game_hours % 24
+        fog_start = self.MORNING_FOG_START_HOUR
+        fog_end = self.MORNING_FOG_END_HOUR
+        if fog_start <= morning_hour < fog_end:
+            fade_in = min(1.0, (morning_hour - fog_start) / self.MORNING_FOG_FADE_HOURS)
+            fade_out = min(1.0, (fog_end - morning_hour) / self.MORNING_FOG_FADE_HOURS)
+            self.fog_only_intensity = min(fade_in, fade_out)
+        else:
+            self.fog_only_intensity = 0.0
 
         if self.intensity > 0.01:
             wind = 190 * self.intensity
@@ -141,13 +237,23 @@ class WeatherSystem:
                 if drop[0] > self.width + 80:
                     drop[0] = -80
 
-    def draw(self, screen):
-        if self.intensity <= 0.01:
+    def draw(self, screen, camera):
+        if self.intensity <= 0.01 and self.fog_only_intensity <= 0.01:
             return
 
-        fog_alpha = round(38 * self.intensity)
-        self.fog_layer.fill((110, 120, 135, fog_alpha))
-        screen.blit(self.fog_layer, (0, 0))
+        if self.fog_only_intensity > 0.01:
+            thick_fog_alpha = round(105 * self.fog_only_intensity)
+            self.fog_layer.fill((170, 185, 200, thick_fog_alpha))
+            cloud_alpha = round(210 * self.fog_only_intensity)
+            for bank in self.fog_clouds:
+                bank["image"].set_alpha(cloud_alpha)
+                screen_x = round((bank["x"] - camera.offset.x) * ZOOM)
+                screen_y = round((bank["y"] - camera.offset.y) * ZOOM)
+                self.fog_layer.blit(bank["image"], (screen_x, screen_y))
+            screen.blit(self.fog_layer, (0, 0))
+
+        if self.intensity <= 0.01:
+            return
 
         self.rain_layer.fill((0, 0, 0, 0))
         rain_alpha = round(175 * self.intensity)
@@ -1025,10 +1131,10 @@ clock = pygame.time.Clock() # used for creating dt only
 font = pygame.font.Font(None, 40)
 
 day_night = DayNightCycle((SCREEN_WIDTH, SCREEN_HEIGHT))
-weather = WeatherSystem((SCREEN_WIDTH, SCREEN_HEIGHT), DAY_LENGTH_SECONDS, START_HOUR)
 
 # GAME SETUP
 world = World()
+weather = WeatherSystem((SCREEN_WIDTH, SCREEN_HEIGHT), DAY_LENGTH_SECONDS, START_HOUR, world.rect.size)
 camera_group = CameraGroup(world)
 mission = Mission()
 
@@ -1341,9 +1447,9 @@ while True:
 
     # DRAW
     camera_group.custom_draw(camera_target)
+    weather.draw(screen, camera_group)
     day_night.draw(screen)  # tint world; keep mission/minimap UI clear
-    weather.draw(screen)
-    day_night.draw(screen)  # keep clock clear and UI readable
+    day_night.draw(screen)  # tint world and keep the clock readable
 
     mission.draw(screen, camera_group)
     mission.draw_ui(screen)
