@@ -9,6 +9,63 @@ ROAD_COLOR = (80,80,70)
 BALE_COLOR = (156, 36, 11)
 ZOOM = 0.75
 
+# One complete in-game day lasts 10 real minutes. Change this to tune the pace.
+DAY_LENGTH_SECONDS = 600
+START_HOUR = 8.0
+DAY_LENGTH_SECONDS = 60
+START_HOUR = 12.0
+
+
+class DayNightCycle:
+    """A simple 24-hour clock with a smooth ambient color overlay."""
+
+    # (hour, tint RGB, tint opacity). Clear midday uses zero opacity.
+    KEYFRAMES = (
+        (0.0, (20, 28, 72), 115),
+        (4.5, (30, 38, 82), 105),
+        (6.0, (255, 120, 55), 62),
+        (8.0, (255, 190, 110), 20),
+        (9.0, (0, 0, 0), 0),
+        (16.0, (0, 0, 0), 0),
+        (18.0, (255, 135, 65), 48),
+        (20.0, (55, 55, 115), 82),
+        (24.0, (20, 28, 72), 115),
+    )
+
+    def __init__(self, screen_size, day_length_seconds=DAY_LENGTH_SECONDS, start_hour=START_HOUR):
+        self.day_length_seconds = day_length_seconds
+        self.hour = start_hour % 24
+        self.overlay = pygame.Surface(screen_size, pygame.SRCALPHA)
+        self.clock_font = pygame.font.Font(None, 28)
+
+    def update(self, dt):
+        self.hour = (self.hour + dt * 24 / self.day_length_seconds) % 24
+
+    def _tint(self):
+        hour = self.hour
+        for index in range(len(self.KEYFRAMES) - 1):
+            start_hour, start_color, start_alpha = self.KEYFRAMES[index]
+            end_hour, end_color, end_alpha = self.KEYFRAMES[index + 1]
+            if start_hour <= hour <= end_hour:
+                amount = (hour - start_hour) / (end_hour - start_hour)
+                color = tuple(round(a + (b - a) * amount) for a, b in zip(start_color, end_color))
+                alpha = round(start_alpha + (end_alpha - start_alpha) * amount)
+                return color, alpha
+        return (0, 0, 0), 0
+
+    def draw(self, screen):
+        color, alpha = self._tint()
+        if alpha:
+            self.overlay.fill((*color, alpha))
+            screen.blit(self.overlay, (0, 0))
+
+        hours = int(self.hour)
+        minutes = int((self.hour - hours) * 60)
+        label = self.clock_font.render(f"{hours:02d}:{minutes:02d}", True, (255, 255, 255))
+        box = pygame.Rect(SCREEN_WIDTH - 112, 18, 94, 38)
+        pygame.draw.rect(screen, (20, 20, 25), box, border_radius=6)
+        screen.blit(label, label.get_rect(center=box.center))
+
 class World:
     def __init__(self):
         self.surface = pygame.Surface((6000, 4000))
@@ -874,6 +931,8 @@ pygame.mouse.set_visible(False)
 clock = pygame.time.Clock() # used for creating dt only
 font = pygame.font.Font(None, 40)
 
+day_night = DayNightCycle((SCREEN_WIDTH, SCREEN_HEIGHT))
+
 # GAME SETUP
 world = World()
 camera_group = CameraGroup(world)
@@ -1065,7 +1124,7 @@ camera_target = player
 while True:
 
     # DT
-    dt = clock.tick(120) / 1000
+    dt = clock.tick() / 1000
 
 
     # EVENTS
@@ -1159,6 +1218,7 @@ while True:
                     # if there is no free space, the player simply stays in the car
 
     # UPDATE
+    day_night.update(dt)
     for car in cars:
         car.update(cars, dt)
 
@@ -1186,6 +1246,7 @@ while True:
 
     # DRAW
     camera_group.custom_draw(camera_target)
+    day_night.draw(screen)  # tint world; keep mission/minimap UI clear
 
     mission.draw(screen, camera_group)
     mission.draw_ui(screen)
