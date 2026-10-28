@@ -66,6 +66,99 @@ class DayNightCycle:
         pygame.draw.rect(screen, (20, 20, 25), box, border_radius=6)
         screen.blit(label, label.get_rect(center=box.center))
 
+
+class WeatherSystem:
+    """Mostly clear weather with occasional, intense rainstorms and fog."""
+
+    STORM_CHANCE_PER_DAY = 0.25
+    STORM_MIN_HOURS = 2.5
+    STORM_MAX_HOURS = 5.5
+    STORM_FADE_HOURS = 0.75
+    RAIN_DROP_COUNT = 1100
+
+    def __init__(self, screen_size, day_length_seconds, start_hour):
+        self.width, self.height = screen_size
+        self.day_length_seconds = day_length_seconds
+        self.elapsed_game_hours = float(start_hour)
+        self.current_day = int(self.elapsed_game_hours // 24)
+        self.rng = random.Random()
+        self.storms = {}
+        self._schedule_day(self.current_day)
+        self.intensity = 0.0
+
+        self.fog_layer = pygame.Surface(screen_size, pygame.SRCALPHA)
+        self.rain_layer = pygame.Surface(screen_size, pygame.SRCALPHA)
+        self.rain_drops = [
+            [self.rng.uniform(0, self.width), self.rng.uniform(0, self.height),
+             self.rng.uniform(14, 30), self.rng.uniform(850, 1450)]
+            for _ in range(self.RAIN_DROP_COUNT)
+        ]
+
+    def _schedule_day(self, day):
+        # Three days out of four are usually clear. The first possible storm
+        # starts after the noon start time so the game opens in sunshine.
+        if self.rng.random() >= self.STORM_CHANCE_PER_DAY:
+            self.storms[day] = None
+            return
+
+        earliest_hour = 14 if day == 0 else 0
+        start = day * 24 + self.rng.uniform(earliest_hour, 24)
+        duration = self.rng.uniform(self.STORM_MIN_HOURS, self.STORM_MAX_HOURS)
+        self.storms[day] = (start, start + duration)
+
+    def update(self, dt):
+        self.elapsed_game_hours += dt * 24 / self.day_length_seconds
+        new_day = int(self.elapsed_game_hours // 24)
+        while self.current_day < new_day:
+            self.current_day += 1
+            self._schedule_day(self.current_day)
+        for old_day in list(self.storms):
+            if old_day < self.current_day - 1:
+                del self.storms[old_day]
+
+        target = 0.0
+        for storm in self.storms.values():
+            if storm is None:
+                continue
+            start, end = storm
+            if start <= self.elapsed_game_hours < end:
+                fade_in = min(1.0, (self.elapsed_game_hours - start) / self.STORM_FADE_HOURS)
+                fade_out = min(1.0, (end - self.elapsed_game_hours) / self.STORM_FADE_HOURS)
+                target = max(target, min(fade_in, fade_out))
+        # Drive the effects directly from the storm's gradual fade curve.
+        self.intensity = target
+
+        if self.intensity > 0.01:
+            wind = 190 * self.intensity
+            for drop in self.rain_drops:
+                drop[0] += wind * dt
+                drop[1] += drop[3] * dt
+                if drop[1] > self.height:
+                    drop[0] = self.rng.uniform(-80, self.width)
+                    drop[1] = -drop[2]
+                    drop[2] = self.rng.uniform(14, 30)
+                    drop[3] = self.rng.uniform(850, 1450)
+                if drop[0] > self.width + 80:
+                    drop[0] = -80
+
+    def draw(self, screen):
+        if self.intensity <= 0.01:
+            return
+
+        fog_alpha = round(38 * self.intensity)
+        self.fog_layer.fill((110, 120, 135, fog_alpha))
+        screen.blit(self.fog_layer, (0, 0))
+
+        self.rain_layer.fill((0, 0, 0, 0))
+        rain_alpha = round(175 * self.intensity)
+        rain_color = (195, 215, 230, rain_alpha)
+        visible_drop_count = round(len(self.rain_drops) * self.intensity)
+        for x, y, length, _speed in self.rain_drops[:visible_drop_count]:
+            start = (int(x), int(y))
+            end = (int(x - 5), int(y - length))
+            pygame.draw.line(self.rain_layer, rain_color, start, end, 1)
+        screen.blit(self.rain_layer, (0, 0))
+
 class World:
     def __init__(self):
         self.surface = pygame.Surface((6000, 4000))
@@ -932,6 +1025,7 @@ clock = pygame.time.Clock() # used for creating dt only
 font = pygame.font.Font(None, 40)
 
 day_night = DayNightCycle((SCREEN_WIDTH, SCREEN_HEIGHT))
+weather = WeatherSystem((SCREEN_WIDTH, SCREEN_HEIGHT), DAY_LENGTH_SECONDS, START_HOUR)
 
 # GAME SETUP
 world = World()
@@ -1219,6 +1313,7 @@ while True:
 
     # UPDATE
     day_night.update(dt)
+    weather.update(dt)
     for car in cars:
         car.update(cars, dt)
 
@@ -1247,6 +1342,8 @@ while True:
     # DRAW
     camera_group.custom_draw(camera_target)
     day_night.draw(screen)  # tint world; keep mission/minimap UI clear
+    weather.draw(screen)
+    day_night.draw(screen)  # keep clock clear and UI readable
 
     mission.draw(screen, camera_group)
     mission.draw_ui(screen)
