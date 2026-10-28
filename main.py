@@ -69,6 +69,11 @@ BIRDSONG_FADE_START_HOUR = 19.0
 BIRDSONG_SILENT_HOUR = 20.0
 DAWN_SONG_START_HOUR = 5.0
 DAWN_SONG_FULL_HOUR = 6.0
+OWL_FADE_START_HOUR = 19.0
+OWL_FULL_VOLUME_HOUR = 20.0
+OWL_FADE_OUT_START_HOUR = 5.0
+OWL_SILENT_HOUR = 6.0
+OWL_AMBIENCE_VOLUME = 0.45
 
 
 class DayNightCycle:
@@ -1209,6 +1214,7 @@ class Mission:
         self.race_state = "locked"
         self.race_countdown = 0.0
         self.race_result = ""
+        self.race_result_timer = 0.0
         self.race_start = pygame.Rect(3400, 3200, 400, 300)
         self.race_checkpoints = [
             pygame.Rect(5100, 3200, 550, 300),  # bottom/east turn
@@ -1253,6 +1259,7 @@ class Mission:
     def _finish_race(self, result):
         self.race_state = "finished"
         self.race_result = result
+        self.race_result_timer = 5.0
         if self.rival_car:
             self.rival_car.active = False
             self.rival_car.reverse_active = False
@@ -1364,6 +1371,11 @@ class Mission:
                         else:
                             self._finish_race("YOU WON THE RACE!")
 
+            elif self.race_state == "finished":
+                self.race_result_timer = max(0.0, self.race_result_timer - dt)
+                if self.race_result_timer == 0:
+                    self.race_result = ""
+
         if self.completed:
             self.complete_timer -= dt
             if self.complete_timer <= 0:
@@ -1404,6 +1416,8 @@ class Mission:
                 else:
                     message = f"LAP {self.player_lap}/{self.total_laps} - RETURN TO START/FINISH"
             else:
+                if not self.race_result:
+                    return
                 message = self.race_result
         else:
             return
@@ -1486,6 +1500,10 @@ for tree in world.trees:
 bg_birdsounds = pygame.mixer.Sound("sounds/morning_birds.mp3")
 bg_birdsounds.play(loops = -1)
 bg_birdsounds.set_volume(0)
+owl_ambience = pygame.mixer.Sound("sounds/owl.mp3")
+owl_ambience_channel = owl_ambience.play(loops=-1)
+if owl_ambience_channel:
+    owl_ambience_channel.set_volume(0)
 
 car_engine_sound = pygame.mixer.Sound("sounds/car_engine_loop.ogg")
 car_engine_sound.set_volume(0)
@@ -1538,6 +1556,7 @@ for car in cars:
         car.engine_sound = pygame.mixer.Sound("sounds/car_engine_loop.ogg")
         car.engine_sound.play(loops=-1)
         pygame.mixer.set_num_channels(len(cars) + 1)
+        pygame.mixer.set_num_channels(len(cars) + 2)
         car.engine_gain = 2.5   # regular cars: louder
     else:
         car.engine_sound.play(loops=-1)
@@ -1791,6 +1810,23 @@ while True:
     else:
         bird_volume = 1.0
     bg_birdsounds.set_volume(bird_volume)
+
+    if OWL_FADE_START_HOUR <= hour < OWL_FULL_VOLUME_HOUR:
+        owl_volume = OWL_AMBIENCE_VOLUME * (
+            (hour - OWL_FADE_START_HOUR) / (OWL_FULL_VOLUME_HOUR - OWL_FADE_START_HOUR)
+        )
+    elif hour >= OWL_FULL_VOLUME_HOUR or hour < OWL_FADE_OUT_START_HOUR:
+        owl_volume = OWL_AMBIENCE_VOLUME
+    elif OWL_FADE_OUT_START_HOUR <= hour < OWL_SILENT_HOUR:
+        owl_volume = OWL_AMBIENCE_VOLUME * (
+            1 - (hour - OWL_FADE_OUT_START_HOUR) / (OWL_SILENT_HOUR - OWL_FADE_OUT_START_HOUR)
+        )
+    else:
+        owl_volume = 0.0
+
+    if owl_ambience_channel:
+        owl_ambience_channel.set_volume(owl_volume)
+
 
     # ENGINE SOUND
     for car in cars:
