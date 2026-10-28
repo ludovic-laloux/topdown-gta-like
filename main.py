@@ -65,6 +65,10 @@ class DayNightCycle:
         pygame.draw.rect(screen, (20, 20, 25), box, border_radius=6)
 DAY_LENGTH_SECONDS = 120
 START_HOUR = 13.0
+BIRDSONG_FADE_START_HOUR = 19.0
+BIRDSONG_SILENT_HOUR = 20.0
+DAWN_SONG_START_HOUR = 5.0
+DAWN_SONG_FULL_HOUR = 6.0
 
 
 class DayNightCycle:
@@ -1481,6 +1485,7 @@ for tree in world.trees:
 # SOUND SETUP
 bg_birdsounds = pygame.mixer.Sound("sounds/morning_birds.mp3")
 bg_birdsounds.play(loops = -1)
+bg_birdsounds.set_volume(0)
 
 car_engine_sound = pygame.mixer.Sound("sounds/car_engine_loop.ogg")
 car_engine_sound.set_volume(0)
@@ -1768,6 +1773,24 @@ while True:
 
     player.update(cars, dt)
     mission.update(player, dt)
+    mission.update(player, dt)
+
+    # Fade birdsong out as evening falls, keep it silent overnight, and bring
+    # it back gradually at dawn.
+    hour = day_night.hour
+    if BIRDSONG_FADE_START_HOUR <= hour < BIRDSONG_SILENT_HOUR:
+        bird_volume = 1 - (hour - BIRDSONG_FADE_START_HOUR) / (
+            BIRDSONG_SILENT_HOUR - BIRDSONG_FADE_START_HOUR
+        )
+    elif hour >= BIRDSONG_SILENT_HOUR or hour < DAWN_SONG_START_HOUR:
+        bird_volume = 0.0
+    elif DAWN_SONG_START_HOUR <= hour < DAWN_SONG_FULL_HOUR:
+        bird_volume = (hour - DAWN_SONG_START_HOUR) / (
+            DAWN_SONG_FULL_HOUR - DAWN_SONG_START_HOUR
+        )
+    else:
+        bird_volume = 1.0
+    bg_birdsounds.set_volume(bird_volume)
 
     # ENGINE SOUND
     for car in cars:
