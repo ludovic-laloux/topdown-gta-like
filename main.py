@@ -1,4 +1,3 @@
-import pygame, sys, random
 import pygame, sys, random, math
 
 # SETTINGS
@@ -10,59 +9,7 @@ ROAD_COLOR = (80,80,70)
 BALE_COLOR = (156, 36, 11)
 ZOOM = 0.75
 
-# One complete in-game day lasts 10 real minutes. Change this to tune the pace.
-DAY_LENGTH_SECONDS = 600
-START_HOUR = 8.0
-
-
-class DayNightCycle:
-    """A simple 24-hour clock with a smooth ambient color overlay."""
-
-    # (hour, tint RGB, tint opacity). Clear midday uses zero opacity.
-    KEYFRAMES = (
-        (0.0, (20, 28, 72), 115),
-        (4.5, (30, 38, 82), 105),
-        (6.0, (255, 120, 55), 62),
-        (8.0, (255, 190, 110), 20),
-        (9.0, (0, 0, 0), 0),
-        (16.0, (0, 0, 0), 0),
-        (18.0, (255, 135, 65), 48),
-        (20.0, (55, 55, 115), 82),
-        (24.0, (20, 28, 72), 115),
-    )
-
-    def __init__(self, screen_size, day_length_seconds=DAY_LENGTH_SECONDS, start_hour=START_HOUR):
-        self.day_length_seconds = day_length_seconds
-        self.hour = start_hour % 24
-        self.overlay = pygame.Surface(screen_size, pygame.SRCALPHA)
-        self.clock_font = pygame.font.Font(None, 28)
-
-    def update(self, dt):
-        self.hour = (self.hour + dt * 24 / self.day_length_seconds) % 24
-
-    def _tint(self):
-        hour = self.hour
-        for index in range(len(self.KEYFRAMES) - 1):
-            start_hour, start_color, start_alpha = self.KEYFRAMES[index]
-            end_hour, end_color, end_alpha = self.KEYFRAMES[index + 1]
-            if start_hour <= hour <= end_hour:
-                amount = (hour - start_hour) / (end_hour - start_hour)
-                color = tuple(round(a + (b - a) * amount) for a, b in zip(start_color, end_color))
-                alpha = round(start_alpha + (end_alpha - start_alpha) * amount)
-                return color, alpha
-        return (0, 0, 0), 0
-
-    def draw(self, screen):
-        color, alpha = self._tint()
-        if alpha:
-            self.overlay.fill((*color, alpha))
-            screen.blit(self.overlay, (0, 0))
-
-        hours = int(self.hour)
-        minutes = int((self.hour - hours) * 60)
-        label = self.clock_font.render(f"{hours:02d}:{minutes:02d}", True, (255, 255, 255))
-        box = pygame.Rect(SCREEN_WIDTH - 112, 18, 94, 38)
-        pygame.draw.rect(screen, (20, 20, 25), box, border_radius=6)
+# One complete in-game day lasts this many real seconds. Change this to tune the pace.
 DAY_LENGTH_SECONDS = 120
 START_HOUR = 13.0
 BIRDSONG_FADE_START_HOUR = 19.0
@@ -75,104 +22,43 @@ OWL_FADE_OUT_START_HOUR = 5.0
 OWL_SILENT_HOUR = 6.0
 OWL_AMBIENCE_VOLUME = 0.45
 
+# MISSION 4 - THE RIVAL'S REVENGE: image of the second rival buggy
+RIVAL_2_IMAGE = "graphics/buggy/rival_buggy_2.png"
 
-class DayNightCycle:
-    """A simple 24-hour clock with a smooth ambient color overlay."""
+# MISSION 4 - TRACK (empty area west of the houses)
+# The loop is described by its centre line; the road is TRACK_WIDTH wide around it.
+# Race direction: clockwise (west along the bottom, north up the west side...).
+TRACK_LEFT, TRACK_TOP, TRACK_RIGHT, TRACK_BOTTOM = 600, 1000, 2000, 2400
+TRACK_WIDTH = 300
+_HALF = TRACK_WIDTH // 2
+TRACK_ROADS = [
+    pygame.Rect(TRACK_LEFT - _HALF, TRACK_TOP - _HALF, TRACK_RIGHT - TRACK_LEFT + TRACK_WIDTH, TRACK_WIDTH),   # top
+    pygame.Rect(TRACK_LEFT - _HALF, TRACK_BOTTOM - _HALF, TRACK_RIGHT - TRACK_LEFT + TRACK_WIDTH, TRACK_WIDTH),  # bottom
+    pygame.Rect(TRACK_LEFT - _HALF, TRACK_TOP - _HALF, TRACK_WIDTH, TRACK_BOTTOM - TRACK_TOP + TRACK_WIDTH),   # west side
+    pygame.Rect(TRACK_RIGHT - _HALF, TRACK_TOP - _HALF, TRACK_WIDTH, TRACK_BOTTOM - TRACK_TOP + TRACK_WIDTH),  # east side
+    pygame.Rect(TRACK_RIGHT + _HALF, 1500, 3000 - (TRACK_RIGHT + _HALF), 300),   # link road to the main west road
+]
+# No fields or trees are generated inside this zone, so the track stays clear.
+TRACK_ZONE = pygame.Rect(350, 750, 1950, 1900)
+# Chequered start/finish line (x position, drawn across the bottom road)
+TRACK_FINISH_LINE_X = 1830
 
-    # (hour, tint RGB, tint opacity). Clear midday uses zero opacity.
-    KEYFRAMES = (
-        (0.0, (20, 28, 72), 115),
-        (4.5, (30, 38, 82), 105),
-        (6.0, (255, 120, 55), 62),
-        (8.0, (255, 190, 110), 20),
-        (9.0, (0, 0, 0), 0),
-        (16.0, (0, 0, 0), 0),
-        (18.0, (255, 135, 65), 48),
-        (20.0, (55, 55, 115), 82),
-        (24.0, (20, 28, 72), 115),
-    )
 
-    def __init__(self, screen_size, day_length_seconds=DAY_LENGTH_SECONDS, start_hour=START_HOUR):
-        self.day_length_seconds = day_length_seconds
-        self.hour = start_hour % 24
-        self.overlay = pygame.Surface(screen_size, pygame.SRCALPHA)
-        self.clock_font = pygame.font.Font(None, 28)
+def loop_waypoints(left, top, right, bottom, lead=300):
+    """Racing line around the track for one lane (clockwise, corners cut at 45 degrees)."""
+    return [
+        (left + lead, bottom), (left, bottom - lead),    # south-west corner
+        (left, top + lead), (left + lead, top),          # north-west corner
+        (right - lead, top), (right, top + lead),        # north-east corner
+        (right, bottom - lead), (right - lead, bottom),  # south-east corner
+    ]
 
-    def update(self, dt):
-        self.hour = (self.hour + dt * 24 / self.day_length_seconds) % 24
 
-    def _tint(self):
-        hour = self.hour
-        for index in range(len(self.KEYFRAMES) - 1):
-            start_hour, start_color, start_alpha = self.KEYFRAMES[index]
-            end_hour, end_color, end_alpha = self.KEYFRAMES[index + 1]
-            if start_hour <= hour <= end_hour:
-                amount = (hour - start_hour) / (end_hour - start_hour)
-                color = tuple(round(a + (b - a) * amount) for a, b in zip(start_color, end_color))
-                alpha = round(start_alpha + (end_alpha - start_alpha) * amount)
-                return color, alpha
-        return (0, 0, 0), 0
-
-    def draw(self, screen):
-        color, alpha = self._tint()
-        if alpha:
-            self.overlay.fill((*color, alpha))
-            screen.blit(self.overlay, (0, 0))
-
-        hours = int(self.hour)
-
-class DayNightCycle:
-    """A simple 24-hour clock with a smooth ambient color overlay."""
-
-    # (hour, tint RGB, tint opacity). Clear midday uses zero opacity.
-    KEYFRAMES = (
-        (0.0, (20, 28, 72), 115),
-        (4.5, (30, 38, 82), 105),
-        (6.0, (255, 120, 55), 62),
-        (8.0, (255, 190, 110), 20),
-        (9.0, (0, 0, 0), 0),
-        (16.0, (0, 0, 0), 0),
-        (18.0, (255, 135, 65), 48),
-        (20.0, (55, 55, 115), 82),
-        (24.0, (20, 28, 72), 115),
-    )
-
-    def __init__(self, screen_size, day_length_seconds=DAY_LENGTH_SECONDS, start_hour=START_HOUR):
-        self.day_length_seconds = day_length_seconds
-        self.hour = start_hour % 24
-        self.overlay = pygame.Surface(screen_size, pygame.SRCALPHA)
-        self.clock_font = pygame.font.Font(None, 28)
-
-    def update(self, dt):
-        self.hour = (self.hour + dt * 24 / self.day_length_seconds) % 24
-
-    def _tint(self):
-        hour = self.hour
-        for index in range(len(self.KEYFRAMES) - 1):
-            start_hour, start_color, start_alpha = self.KEYFRAMES[index]
-            end_hour, end_color, end_alpha = self.KEYFRAMES[index + 1]
-            if start_hour <= hour <= end_hour:
-                amount = (hour - start_hour) / (end_hour - start_hour)
-                color = tuple(round(a + (b - a) * amount) for a, b in zip(start_color, end_color))
-                alpha = round(start_alpha + (end_alpha - start_alpha) * amount)
-                return color, alpha
-        return (0, 0, 0), 0
-
-    def draw(self, screen):
-        color, alpha = self._tint()
-        if alpha:
-            self.overlay.fill((*color, alpha))
-            screen.blit(self.overlay, (0, 0))
-
-        hours = int(self.hour)
-        minutes = int((self.hour - hours) * 60)
-        label = self.clock_font.render(f"{hours:02d}:{minutes:02d}", True, (255, 255, 255))
-        box = pygame.Rect(SCREEN_WIDTH - 112, 18, 94, 38)
-        pygame.draw.rect(screen, (20, 20, 25), box, border_radius=6)
-        minutes = int((self.hour - hours) * 60)
-        label = self.clock_font.render(f"{hours:02d}:{minutes:02d}", True, (255, 255, 255))
-        box = pygame.Rect(SCREEN_WIDTH - 112, 18, 94, 38)
-        pygame.draw.rect(screen, (20, 20, 25), box, border_radius=6)
+LANE_OFFSET = 55
+INNER_LANE = loop_waypoints(TRACK_LEFT + LANE_OFFSET, TRACK_TOP + LANE_OFFSET,
+                            TRACK_RIGHT - LANE_OFFSET, TRACK_BOTTOM - LANE_OFFSET)
+OUTER_LANE = loop_waypoints(TRACK_LEFT - LANE_OFFSET, TRACK_TOP - LANE_OFFSET,
+                            TRACK_RIGHT + LANE_OFFSET, TRACK_BOTTOM + LANE_OFFSET)
 
 
 class DayNightCycle:
@@ -416,6 +302,7 @@ class World:
                     not any(check_field.colliderect(field) for field in self.fields)
                     and not any(new_field.colliderect(road) for road in self.roads)
                     and not new_field.colliderect(self.island_rect)
+                    and not new_field.colliderect(TRACK_ZONE)
                 ):
                     break
                 
@@ -423,8 +310,6 @@ class World:
 
         self.hay_bale_image = pygame.image.load("graphics/hay_bale.png").convert_alpha()
         self.hay_bale_image = pygame.transform.scale(self.hay_bale_image, (48, 96))
-
-        self.hay_bales = []
 
         self.hay_bales = []
 
@@ -522,6 +407,7 @@ class World:
                     and not any(tree_rect.colliderect(path) for path in self.paths_to_houses)
                     and not any(tree_rect.inflate(40, 40).colliderect(tree.rect) for tree in self.trees)
                     and not tree_rect.colliderect(self.island_rect)
+                    and not tree_rect.colliderect(TRACK_ZONE)
                 ):
                     break
                 
@@ -565,6 +451,16 @@ class World:
 
         for road in self.roads:
             pygame.draw.rect(self.surface, ROAD_COLOR, road) 
+
+        # Chequered start/finish line of the mission 4 track
+        for row in range(TRACK_WIDTH // 20):
+            for col in range(2):
+                color = (240, 240, 240) if (row + col) % 2 == 0 else (20, 20, 20)
+                pygame.draw.rect(
+                    self.surface,
+                    color,
+                    (TRACK_FINISH_LINE_X + col * 20, TRACK_BOTTOM - _HALF + row * 20, 20, 20)
+                )
 
         for house, image in zip(self.houses, self.house_images):
             self.surface.blit(image, house.topleft)
@@ -1078,125 +974,24 @@ class CameraGroup(pygame.sprite.Group):
             )
 
 
-class Mission:
-    def __init__(self):
-        self.number = 1
-        self.completed = False
-        self.completion_time = 0
+class RaceRival:
+    """One AI opponent in a race: its car, its racing line and its lap count."""
 
-        # Destination in world coordinates
-        self.destination = pygame.Rect(4700, 2400, 200, 200)
-        self.destination2 = pygame.Rect(2650, 3500, 200, 200)
+    def __init__(self, car, setup):
+        self.car = car
+        self.spawn = setup["spawn"]
+        self.angle = setup["angle"]
+        self.waypoints = setup["waypoints"]
+        self.reach = setup["reach"]                    # how close it must get to a waypoint
+        self.road_speed = setup["road_speed"]
+        self.acceleration = setup["acceleration"]
+        self.corner_scale = setup["corner_scale"]      # >1 = takes corners faster
+        self.reset()
 
-        # Used to pause between missions
-        self.complete_timer = 0
+    def reset(self):
+        self.waypoint_index = 0
+        self.lap = 1
 
-    def update(self, player, dt):
-
-        # -------------------------
-        # MISSION 1
-        # -------------------------
-        if self.number == 1:
-
-            # Must be walking
-            if not player.in_car:
-
-                if not self.completed and player.hitbox.colliderect(self.destination):
-                    self.completed = True
-                    self.completion_time = pygame.time.get_ticks()
-                    self.complete_timer = 2
-        # -------------------------
-        # WAIT AFTER MISSION 1
-        # -------------------------
-        elif self.number == 2:
-
-            # Must be driving
-            if player.in_car and player.current_car:
-                if not self.completed and player.current_car.rect.colliderect(self.destination2):
-                    self.completed = True
-                    self.completion_time = pygame.time.get_ticks()
-                    self.complete_timer = 2
-        
-        # Countdown after completing mission
-        if self.completed:
-            self.complete_timer -= dt
-
-            if self.complete_timer <= 0:
-                self.completed = False
-                self.number += 1
-
-    def draw(self, surface, camera):
-
-        if not self.completed:
-
-            if self.number == 1:
-                destination = self.destination
-
-            elif self.number == 2:
-                destination = self.destination2
-
-            else:
-                return
-            
-            position = (
-                destination.x * ZOOM - camera.offset.x * ZOOM,
-                destination.y * ZOOM - camera.offset.y * ZOOM
-            )
-
-            size = (
-                int(destination.width * ZOOM),
-                int(destination.height * ZOOM)
-            )
-
-            pygame.draw.rect(
-                surface,
-                (100, 0, 255),
-                (*position, *size),
-                5
-            )
-
-    def draw_ui(self, surface):
-
-        if self.completed:
-
-            elapsed = pygame.time.get_ticks() - self.completion_time
-
-            if elapsed < 2000:
-                text = font.render(
-                    "MISSION COMPLETE!",
-                    True,
-                    (255, 255, 255)
-                )
-
-                surface.blit(text, (30, 30))
-
-        else:
-
-            if self.number == 1:
-                message = "MISSION 1: Walk to the marked location"
-
-            elif self.number == 2:
-                message = "MISSION 2: Drive to the marked location"
-
-            else:
-                return
-
-            text = font.render(
-                message,
-                True,
-                (255, 255, 255)
-            )
-
-            surface.blit(text, (30, 30))
-
-    def current_destination(self):
-        if self.completed:
-            return None
-        if self.number == 1:
-            return self.destination
-        if self.number == 2:
-            return self.destination2
-        return None
 
 class Mission:
     def __init__(self):
@@ -1208,88 +1003,206 @@ class Mission:
         self.destination2 = pygame.Rect(2650, 3500, 200, 200)
         self.complete_timer = 0
 
-        # Mission 3: two laps around the island roads.
-        self.rival_car = None
-        self.race_initialized = False
+        # Filled in by the game setup: every car in the world and the rival cars.
+        self.cars = []
+        self.rival_car = None      # rival of mission 3 (also the leader of mission 4)
+        self.rival_car_2 = None    # his friend, only racing in mission 4
+
+        # Race state shared by missions 3 and 4
+        self.race = None
+        self.rivals = []
+        # locked -> waiting -> countdown -> running -> finished (-> locked again after a loss)
         self.race_state = "locked"
         self.race_countdown = 0.0
         self.race_result = ""
         self.race_result_timer = 0.0
-        self.race_start = pygame.Rect(3400, 3200, 400, 300)
-        self.race_checkpoints = [
-            pygame.Rect(5100, 3200, 550, 300),  # bottom/east turn
-            pygame.Rect(5500, 450, 300, 1100),   # east road
-            pygame.Rect(3900, 100, 600, 300),    # top road
-            pygame.Rect(3000, 2000, 400, 500),   # west road
-        ]
-        self.race_finish = pygame.Rect(3400, 3200, 400, 300)
+        self.player_won = False
         self.player_checkpoint_index = 0
-        self.rival_waypoints = [
-            (5350, 3350), (5650, 2800), (5650, 450), (5300, 250),
-            (3500, 250), (3200, 500), (3200, 3000), (3600, 3350),
-        ]
-        self.rival_waypoint_index = 0
-        self.total_laps = 2
         self.player_lap = 1
-        self.rival_lap = 1
 
-    def _prepare_race(self):
-        if self.race_initialized or self.rival_car is None:
-            return
+        mission_3_start = pygame.Rect(3400, 3200, 400, 300)
+        mission_4_start = pygame.Rect(1500, TRACK_BOTTOM - _HALF, 350, TRACK_WIDTH)
 
-        car = self.rival_car
-        car.set_driver(True)
-        car.hitbox.center = (4000, 3270)
-        car.pos = pygame.Vector2(car.hitbox.center)
-        car.rect.center = car.hitbox.center
-        car.angle = -90  # face east along the bottom road
-        car.rotation_speed = 250
-        car.acceleration = 750
-        car.brake = 1900
-        car.speed = 0
-        car.direction = 0
-        car.active = False
-        car.reverse_active = False
-        car.image, car.rect, car.mask = car.build_image(car.angle)
-        car.get_rotation()
+        self.race_configs = {
+            # MISSION 3: two laps around the island roads against the rival.
+            3: {
+                "laps": 2,
+                "start": mission_3_start,
+                "finish": mission_3_start,
+                "checkpoints": [
+                    pygame.Rect(5100, 3200, 550, 300),  # bottom/east turn
+                    pygame.Rect(5500, 450, 300, 1100),   # east road
+                    pygame.Rect(3900, 100, 600, 300),    # top road
+                    pygame.Rect(3000, 2000, 400, 500),   # west road
+                ],
+                "intro": "MISSION 3: Drive to the race start",
+                "win": "YOU WON THE RACE!",
+                "lose": "THE RIVAL WON THE RACE!",
+                "rivals": [
+                    {
+                        "car": "rival_car",
+                        "spawn": (4000, 3270),
+                        "angle": -90,  # face east along the bottom road
+                        "waypoints": [
+                            (5350, 3350), (5650, 2800), (5650, 450), (5300, 250),
+                            (3500, 250), (3200, 500), (3200, 3000), (3600, 3350),
+                        ],
+                        "reach": 320,
+                        "road_speed": 900,
+                        "acceleration": 750,
+                        "corner_scale": 1.0,
+                    },
+                ],
+            },
+            # MISSION 4: the rival's revenge. Four laps against two buggies on the
+            # track west of the houses. Tune the rivals' speed here.
+            4: {
+                "laps": 4,
+                "start": mission_4_start,
+                "finish": mission_4_start,
+                "checkpoints": [
+                    pygame.Rect(TRACK_LEFT - _HALF, 1500, TRACK_WIDTH, 400),       # west side
+                    pygame.Rect(1100, TRACK_TOP - _HALF, 400, TRACK_WIDTH),         # top
+                    pygame.Rect(TRACK_RIGHT - _HALF, 1850, TRACK_WIDTH, 350),       # east side
+                ],
+                "intro": "MISSION 4: THE RIVAL'S REVENGE - Drive to the race start",
+                "win": "YOU BEAT THEM BOTH!",
+                "lose": "THE RIVALS WON THE RACE!",
+                "rivals": [
+                    {
+                        "car": "rival_car",
+                        "spawn": (1250, TRACK_BOTTOM - LANE_OFFSET),
+                        "angle": 90,   # face west along the bottom road
+                        "waypoints": INNER_LANE,
+                        "reach": 150,
+                        "road_speed": 1000,
+                        "acceleration": 800,
+                        "corner_scale": 1.08,
+                    },
+                    {
+                        "car": "rival_car_2",
+                        "spawn": (1100, TRACK_BOTTOM + LANE_OFFSET),
+                        "angle": 90,
+                        "waypoints": OUTER_LANE,
+                        "reach": 150,
+                        "road_speed": 950,
+                        "acceleration": 780,
+                        "corner_scale": 1.0,
+                    },
+                ],
+            },
+        }
+
+    # ------------------------------------------------------------------
+    # helpers
+    # ------------------------------------------------------------------
+    @property
+    def rival_cars(self):
+        return [car for car in (self.rival_car, self.rival_car_2) if car is not None]
+
+    def racing_cars(self):
+        """Rival cars taking part in the current race."""
+        return [rival.car for rival in self.rivals]
+
+    def _begin_race(self):
+        """Called once when a race mission (3 or 4) becomes the current mission."""
+        config = self.race_configs[self.number]
+        self.race = config
+        self.rivals = []
+        for setup in config["rivals"]:
+            car = getattr(self, setup["car"])
+            if car is not None:
+                self.rivals.append(RaceRival(car, setup))
+
+        self.race_state = "locked"
+        self.race_countdown = 0.0
+        self.race_result = ""
+        self.race_result_timer = 0.0
+        self.player_won = False
+        self.player_checkpoint_index = 0
+        self.player_lap = 1
+
+    def _grid_is_clear(self, player):
+        """True when nobody is parked on the rivals' starting spots."""
+        zones = []
+        for rival in self.rivals:
+            zone = pygame.Rect(0, 0, 220, 220)
+            zone.center = rival.spawn
+            zones.append(zone)
+
+        for car in self.cars:
+            if car in self.rival_cars:
+                continue
+            if any(car.rect.colliderect(zone) for zone in zones):
+                return False
+
+        if not player.in_car and any(player.hitbox.colliderect(zone) for zone in zones):
+            return False
+
+        return True
+
+    def _place_rivals(self):
+        """Put every rival back on the starting grid, ready for the countdown."""
+        for rival in self.rivals:
+            car = rival.car
+            car.set_driver(True)
+            car.hitbox.center = rival.spawn
+            car.pos = pygame.Vector2(car.hitbox.center)
+            car.rect.center = car.hitbox.center
+            car.angle = rival.angle
+            car.rotation_speed = 250
+            car.acceleration = rival.acceleration
+            car.brake = 1900
+            car.road_speed = rival.road_speed
+            car.speed = 0
+            car.direction = 0
+            car.active = False
+            car.reverse_active = False
+            car.push_remainder = pygame.Vector2()
+            car.image, car.rect, car.mask = car.build_image(car.angle)
+            car.get_rotation()
+            rival.reset()
 
         self.race_state = "waiting"
-        self.race_initialized = True
 
-    def _finish_race(self, result):
+    def _finish_race(self, player_won):
         self.race_state = "finished"
-        self.race_result = result
+        self.player_won = player_won
+        self.race_result = self.race["win"] if player_won else self.race["lose"]
         self.race_result_timer = 5.0
-        if self.rival_car:
-            self.rival_car.active = False
-            self.rival_car.reverse_active = False
-            self.rival_car.direction = 0
+        for rival in self.rivals:
+            rival.car.active = False
+            rival.car.reverse_active = False
+            rival.car.direction = 0
 
-    def _drive_rival(self):
-        car = self.rival_car
-        if not car or self.race_state != "running":
-            return
+    def _race_won(self):
+        # Reuse the normal "MISSION COMPLETE!" banner, then the next mission starts.
+        self.race_state = "done"
+        self.completed = True
+        self.completion_time = pygame.time.get_ticks()
+        self.complete_timer = 2
 
-        if self.rival_waypoint_index >= len(self.rival_waypoints):
-            if self.rival_lap < self.total_laps:
-                self.rival_lap += 1
-                self.rival_waypoint_index = 0
+    def _advance_rival(self, rival):
+        """Next waypoint; returns False once the rival has finished its last lap."""
+        rival.waypoint_index += 1
+        if rival.waypoint_index >= len(rival.waypoints):
+            if rival.lap < self.race["laps"]:
+                rival.lap += 1
+                rival.waypoint_index = 0
             else:
-                self._finish_race("THE RIVAL WON THE RACE!")
-                return
+                return False
+        return True
 
-        target = pygame.Vector2(self.rival_waypoints[self.rival_waypoint_index])
+    def _drive_rival(self, rival):
+        car = rival.car
+
+        target = pygame.Vector2(rival.waypoints[rival.waypoint_index])
         to_target = target - pygame.Vector2(car.rect.center)
-        if to_target.length() < 320:
-            self.rival_waypoint_index += 1
-            if self.rival_waypoint_index >= len(self.rival_waypoints):
-                if self.rival_lap < self.total_laps:
-                    self.rival_lap += 1
-                    self.rival_waypoint_index = 0
-                else:
-                    self._finish_race("THE RIVAL WON THE RACE!")
-                    return
-            target = pygame.Vector2(self.rival_waypoints[self.rival_waypoint_index])
+        if to_target.length() < rival.reach:
+            if not self._advance_rival(rival):
+                self._finish_race(False)
+                return
+            target = pygame.Vector2(rival.waypoints[rival.waypoint_index])
             to_target = target - pygame.Vector2(car.rect.center)
 
         desired_angle = math.degrees(math.atan2(-to_target.x, -to_target.y))
@@ -1301,11 +1214,11 @@ class Mission:
 
         turn_size = abs(angle_difference)
         if turn_size > 110:
-            target_speed = 500
+            target_speed = 500 * rival.corner_scale
         elif turn_size > 70:
-            target_speed = 650
+            target_speed = 650 * rival.corner_scale
         elif turn_size > 35:
-            target_speed = 780
+            target_speed = 780 * rival.corner_scale
         else:
             target_speed = car.road_speed
 
@@ -1316,6 +1229,67 @@ class Mission:
         else:
             car.active = car.speed < target_speed
             car.reverse_active = False
+
+    # ------------------------------------------------------------------
+    # race state machine (missions 3 and 4)
+    # ------------------------------------------------------------------
+    def _update_race(self, player, dt):
+        if self.race is not self.race_configs[self.number]:
+            self._begin_race()
+
+        if self.race_state == "locked":
+            # (Re)grid the rivals as soon as nobody is parked on their spots.
+            if self._grid_is_clear(player):
+                self._place_rivals()
+
+        elif self.race_state == "waiting":
+            if (player.in_car and player.current_car
+                    and player.current_car.rect.colliderect(self.race["start"])):
+                self.race_state = "countdown"
+                self.race_countdown = 3.0
+                self.player_checkpoint_index = 0
+                self.player_lap = 1
+                for rival in self.rivals:
+                    rival.reset()
+
+        elif self.race_state == "countdown":
+            if player.current_car:
+                player.current_car.active = False
+                player.current_car.reverse_active = False
+                player.current_car.direction = 0
+                player.current_car.speed = 0
+            self.race_countdown -= dt
+            if self.race_countdown <= 0:
+                self.race_state = "running"
+                for rival in self.rivals:
+                    rival.car.active = True
+
+        elif self.race_state == "running":
+            for rival in self.rivals:
+                self._drive_rival(rival)
+                if self.race_state != "running":
+                    break
+
+            if self.race_state == "running" and player.in_car and player.current_car:
+                checkpoints = self.race["checkpoints"]
+                if self.player_checkpoint_index < len(checkpoints):
+                    if player.current_car.rect.colliderect(checkpoints[self.player_checkpoint_index]):
+                        self.player_checkpoint_index += 1
+                elif player.current_car.rect.colliderect(self.race["finish"]):
+                    if self.player_lap < self.race["laps"]:
+                        self.player_lap += 1
+                        self.player_checkpoint_index = 0
+                    else:
+                        self._finish_race(True)
+
+        elif self.race_state == "finished":
+            self.race_result_timer = max(0.0, self.race_result_timer - dt)
+            if self.race_result_timer == 0:
+                self.race_result = ""
+                if self.player_won:
+                    self._race_won()      # victory: on to the next mission
+                else:
+                    self.race_state = "locked"   # defeat: back to the start line to try again
 
     def update(self, player, dt):
         if self.number == 1:
@@ -1331,50 +1305,8 @@ class Mission:
                 self.completion_time = pygame.time.get_ticks()
                 self.complete_timer = 2
 
-        elif self.number == 3:
-            self._prepare_race()
-
-            if self.race_state == "waiting":
-                if (player.in_car and player.current_car
-                        and player.current_car.rect.colliderect(self.race_start)):
-                    self.race_state = "countdown"
-                    self.race_countdown = 3.0
-                    self.player_checkpoint_index = 0
-                    self.rival_waypoint_index = 0
-                    self.player_lap = 1
-                    self.rival_lap = 1
-
-            elif self.race_state == "countdown":
-                if player.current_car:
-                    player.current_car.active = False
-                    player.current_car.reverse_active = False
-                    player.current_car.direction = 0
-                    player.current_car.speed = 0
-                self.race_countdown -= dt
-                if self.race_countdown <= 0:
-                    self.race_state = "running"
-                    if self.rival_car:
-                        self.rival_car.active = True
-
-            elif self.race_state == "running":
-                self._drive_rival()
-
-                if player.in_car and player.current_car:
-                    if self.player_checkpoint_index < len(self.race_checkpoints):
-                        checkpoint = self.race_checkpoints[self.player_checkpoint_index]
-                        if player.current_car.rect.colliderect(checkpoint):
-                            self.player_checkpoint_index += 1
-                    elif player.current_car.rect.colliderect(self.race_finish):
-                        if self.player_lap < self.total_laps:
-                            self.player_lap += 1
-                            self.player_checkpoint_index = 0
-                        else:
-                            self._finish_race("YOU WON THE RACE!")
-
-            elif self.race_state == "finished":
-                self.race_result_timer = max(0.0, self.race_result_timer - dt)
-                if self.race_result_timer == 0:
-                    self.race_result = ""
+        elif self.number in self.race_configs:
+            self._update_race(player, dt)
 
         if self.completed:
             self.complete_timer -= dt
@@ -1405,20 +1337,23 @@ class Mission:
             message = "MISSION 1: Walk to the marked location"
         elif self.number == 2:
             message = "MISSION 2: Drive to the marked location"
-        elif self.number == 3:
-            if self.race_state == "waiting":
-                message = "MISSION 3: Drive to the race start"
+        elif self.number in self.race_configs:
+            config = self.race_configs[self.number]
+            if self.race_state in ("locked", "waiting"):
+                message = config["intro"]
             elif self.race_state == "countdown":
                 message = f"RACE STARTS IN {max(1, math.ceil(self.race_countdown))}"
             elif self.race_state == "running":
-                if self.player_checkpoint_index < len(self.race_checkpoints):
-                    message = f"LAP {self.player_lap}/{self.total_laps} - CHECKPOINT {self.player_checkpoint_index + 1}/{len(self.race_checkpoints)}"
+                if self.player_checkpoint_index < len(config["checkpoints"]):
+                    message = f"LAP {self.player_lap}/{config['laps']} - CHECKPOINT {self.player_checkpoint_index + 1}/{len(config['checkpoints'])}"
                 else:
-                    message = f"LAP {self.player_lap}/{self.total_laps} - RETURN TO START/FINISH"
+                    message = f"LAP {self.player_lap}/{config['laps']} - RETURN TO START/FINISH"
             else:
                 if not self.race_result:
                     return
                 message = self.race_result
+        elif self.number > max(self.race_configs):
+            message = "ALL MISSIONS COMPLETE!"
         else:
             return
 
@@ -1432,14 +1367,16 @@ class Mission:
             return self.destination
         if self.number == 2:
             return self.destination2
-        if self.number == 3:
+        if self.number in self.race_configs:
+            config = self.race_configs[self.number]
             if self.race_state == "waiting":
-                return self.race_start
+                return config["start"]
             if self.race_state == "running":
-                if self.player_checkpoint_index < len(self.race_checkpoints):
-                    return self.race_checkpoints[self.player_checkpoint_index]
-                return self.race_finish
+                if self.player_checkpoint_index < len(config["checkpoints"]):
+                    return config["checkpoints"][self.player_checkpoint_index]
+                return config["finish"]
         return None
+
 def draw_minimap(surface, target, mission):
     R = MINIMAP_RADIUS
     cx = SCREEN_WIDTH - R - MINIMAP_MARGIN
@@ -1537,9 +1474,14 @@ cars = [
     Car((3430, 2100), world, "graphics/circlus_red.png", (-20, -20), 900, 500)
 ]
 
+# Race rivals wait off the map until their mission starts.
 race_rival_car = Car((-1000, -1000), world, "graphics/buggy/rival_buggy.png", (-50, -50), 900, 600)
+race_rival_car_2 = Car((-1000, -1400), world, RIVAL_2_IMAGE, (-50, -50), 900, 600)
 cars.append(race_rival_car)
+cars.append(race_rival_car_2)
 mission.rival_car = race_rival_car
+mission.rival_car_2 = race_rival_car_2
+mission.cars = cars
 
 cars[0].angle = -90
 cars[0].image, cars[0].rect, cars[0].mask = cars[0].build_image(cars[0].angle)
@@ -1551,12 +1493,13 @@ tractor_car.engine_sound = tractor_engine_sound
 cars[0].engine_gain = 1.0       # buggy
 tractor_car.engine_gain = 1.0   # tractor
 
+# every car plays its own looping engine sound, so make sure there are enough mixer channels
+pygame.mixer.set_num_channels(len(cars) + 4)
+
 for car in cars:
     if car.engine_sound is None:
         car.engine_sound = pygame.mixer.Sound("sounds/car_engine_loop.ogg")
         car.engine_sound.play(loops=-1)
-        pygame.mixer.set_num_channels(len(cars) + 1)
-        pygame.mixer.set_num_channels(len(cars) + 2)
         car.engine_gain = 2.5   # regular cars: louder
     else:
         car.engine_sound.play(loops=-1)
@@ -1609,7 +1552,6 @@ world.scaled_surface = pygame.transform.scale(
 
 # MINIMAP SETUP
 MINIMAP_RADIUS = 45            
-MINIMAP_SCALE = 0.075               
 MINIMAP_MARGIN = 20
 MINIMAP_SCALE = 0.15                 # minimap px per world px (bigger = more zoomed in)
 MINIMAP_D = MINIMAP_RADIUS * 2
@@ -1745,7 +1687,7 @@ while True:
                     closest_distance = ENTER_DISTANCE
 
                     for car in cars:
-                        if car is mission.rival_car:
+                        if car in mission.rival_cars:
                             continue
                         distance = pygame.math.Vector2(
                             player.rect.center
@@ -1792,7 +1734,6 @@ while True:
 
     player.update(cars, dt)
     mission.update(player, dt)
-    mission.update(player, dt)
 
     # Fade birdsong out as evening falls, keep it silent overnight, and bring
     # it back gradually at dawn.
@@ -1829,6 +1770,7 @@ while True:
 
 
     # ENGINE SOUND
+    racing_cars = mission.racing_cars()
     for car in cars:
         target_volume = 0
 
@@ -1837,14 +1779,11 @@ while True:
                 target_volume = 0.25  # pedal pressed
             elif car.speed != 0:
                 target_volume = 0.1  # coasting
-        elif car is mission.rival_car and mission.race_state == "running" and car.speed != 0:
+        elif car in racing_cars and mission.race_state == "running" and car.speed != 0:
             target_volume = 0.12
 
         target_volume = min(1.0, target_volume * car.engine_gain)
 
-        car.engine_volume += (target_volume - car.engine_volume) * min(1, 8 * dt)
-        car.engine_sound.set_volume(car.engine_volume)
-        
         # smooth fade so it doesn't cut abruptly
         car.engine_volume += (target_volume - car.engine_volume) * min(1, 8 * dt)
         car.engine_sound.set_volume(car.engine_volume)
