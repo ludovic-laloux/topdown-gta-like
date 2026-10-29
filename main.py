@@ -1046,6 +1046,8 @@ class Mission:
         self.destination2 = pygame.Rect(2650, 3500, 200, 200)
         self.complete_timer = 0
 
+        self.all_complete_timer = None
+
         # Filled in by the game setup: every car in the world and the rival cars.
         self.cars = []
         self.rival_car = None      # rival of mission 3 (also the leader of mission 4)
@@ -1221,6 +1223,20 @@ class Mission:
             rival.car.direction = 0
 
     def _race_won(self):
+        # Leave the Mission 3 rival in place for Mission 4, but clear the grid after Mission 4.
+        if self.number == 4:
+            for car in self.racing_cars():
+                car.active = False
+                car.reverse_active = False
+                car.direction = 0
+                car.speed = 0
+                car.collision_velocity = pygame.Vector2()
+                car.set_driver(False)
+                car.hitbox.center = (-1000, -1000)
+                car.pos = pygame.Vector2(car.hitbox.center)
+                car.rect.center = car.hitbox.center
+            self.rivals = []
+
         # Reuse the normal "MISSION COMPLETE!" banner, then the next mission starts.
         self.race_state = "done"
         self.completed = True
@@ -1359,6 +1375,12 @@ class Mission:
                 self.completed = False
                 self.number += 1
 
+        if self.number > max(self.race_configs):
+            if self.all_complete_timer is None:
+                self.all_complete_timer = 5.0
+            else:
+                self.all_complete_timer = max(0.0, self.all_complete_timer - dt)
+
     def draw(self, surface, camera):
         if self.number == 3 and self.race_state in ("waiting", "countdown", "running"):
             start = self.race_configs[3]["start"]
@@ -1411,7 +1433,10 @@ class Mission:
                     return
                 message = self.race_result
         elif self.number > max(self.race_configs):
-            message = "ALL MISSIONS COMPLETE!"
+            if self.all_complete_timer is None or self.all_complete_timer > 0:
+                message = "ALL MISSIONS COMPLETE!"
+            else:
+                return
         else:
             return
 
