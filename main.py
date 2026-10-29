@@ -40,6 +40,9 @@ TRACK_ROADS = [
 ]
 # No fields or trees are generated inside this zone, so the track stays clear.
 TRACK_ZONE = pygame.Rect(350, 750, 1950, 1900)
+# Chequered start/finish line (x position, drawn across the bottom road)
+TRACK_FINISH_LINE_X = 1830
+
 
 def loop_waypoints(left, top, right, bottom, lead=300):
     """Racing line around the track for one lane (clockwise, corners cut at 45 degrees)."""
@@ -644,12 +647,14 @@ class Car(pygame.sprite.Sprite):
         self.image = self.original_image
         self.rect = self.image.get_rect(center = pos)
         self.mask = pygame.mask.from_surface(self.image)
+        self.collision_mask = self.build_collision_mask(0)
         self.angle = 0
         self.rotation_speed = 180
         self.direction = 0
         self.forward = pygame.math.Vector2(0, -1)
         
         self.speed = 0
+        self.collision_velocity = pygame.Vector2()
         self.push_remainder = pygame.Vector2()
         self.acceleration = 400
         self.friction = 500
@@ -685,31 +690,41 @@ class Car(pygame.sprite.Sprite):
             if self.direction == -1:
                 new_angle += steer
 
-        image, rect, mask = self.build_image(new_angle)
+        image, rect, mask, collision_mask = self.build_image(new_angle)
 
         # Cancel the turn if it would make the car overlap another car
         if new_angle != self.angle and (
-            self.hits_car(rect, mask, cars) or self.hits_obstacle(rect, mask)
+            self.hits_car(rect, collision_mask, cars) or self.hits_obstacle(rect, mask)
         ):
-            image, rect, mask = self.build_image(self.angle)
+            image, rect, mask, collision_mask = self.build_image(self.angle)
         else:
             self.angle = new_angle
 
-        self.image, self.rect, self.mask = image, rect, mask
+        self.image, self.rect, self.mask, self.collision_mask = image, rect, mask, collision_mask
             
+    def build_collision_mask(self, angle):
+        """Use a padded rounded body shape so wheel gaps cannot interlock."""
+        width, height = self.original_image.get_size()
+        body = pygame.Surface((width, height), pygame.SRCALPHA)
+        body_rect = body.get_rect().inflate(-max(2, width // 18), -max(2, height // 24))
+        pygame.draw.rect(body, (255, 255, 255, 255), body_rect, border_radius=max(2, min(width, height) // 12))
+        rotated_body = pygame.transform.rotate(body, angle)
+        return pygame.mask.from_surface(rotated_body)
+
     def build_image(self, angle):
         image = pygame.transform.rotate(self.original_image, angle)
         rect = image.get_rect(center=self.hitbox.center)
         mask = pygame.mask.from_surface(image)
-        return image, rect, mask
+        collision_mask = self.build_collision_mask(angle)
+        return image, rect, mask, collision_mask
 
-    def hits_car(self, rect, mask, cars):
+    def hits_car(self, rect, collision_mask, cars):
         for car in cars:
             if car is self:
                 continue
             if rect.colliderect(car.rect):
                 offset = (car.rect.x - rect.x, car.rect.y - rect.y)
-                if mask.overlap(car.mask, offset):
+                if collision_mask.overlap(car.collision_mask, offset):
                     return True
         return False
 
@@ -767,7 +782,7 @@ class Car(pygame.sprite.Sprite):
                 continue
             if pushed_rect.colliderect(other.rect):
                 offset = (other.rect.x - pushed_rect.x, other.rect.y - pushed_rect.y)
-                if pygame.mask.from_surface(target.image).overlap(other.mask, offset):
+                if target.collision_mask.overlap(other.collision_mask, offset):
                     return False
 
         target.hitbox = pushed_hitbox
@@ -779,10 +794,39 @@ class Car(pygame.sprite.Sprite):
         # but the pushing car must remain in place for this frame.
         if pushed_rect.colliderect(proposed_rect):
             offset = (proposed_rect.x - pushed_rect.x, proposed_rect.y - pushed_rect.y)
-            if target.mask.overlap(self.mask, offset):
+            if target.collision_mask.overlap(self.collision_mask, offset):
                 return False
 
         return True
+
+    def bounce_off_car(self, other):
+        """Reduce speed and push both cars apart on impact."""
+        normal = pygame.Vector2(self.hitbox.center) - pygame.Vector2(other.hitbox.center)
+        if normal.length_squared() == 0:
+            normal = -self.forward
+        else:
+            normal.normalize_ip()
+
+        self_velocity = self.forward * self.speed + self.collision_velocity
+        other_velocity = other.forward * other.speed + other.collision_velocity
+        closing_speed = max(0, -(self_velocity - other_velocity).dot(normal))
+        impulse = max(220, min(450, closing_speed * 0.75))
+        self.speed *= 0.7
+        other.speed *= 0.7
+        self.collision_velocity += normal * impulse
+        other.collision_velocity -= normal * impulse
+
+        for car, direction in ((self, normal), (other, -normal)):
+            shifted_hitbox = car.hitbox.copy()
+            shifted_hitbox.centerx += round(direction.x * 8)
+            shifted_hitbox.centery += round(direction.y * 8)
+            shifted_rect = car.rect.copy()
+            shifted_rect.center = shifted_hitbox.center
+            if (car.world.rect.contains(shifted_hitbox)
+                    and not car.hits_obstacle(shifted_rect, car.mask)):
+                car.hitbox = shifted_hitbox
+                car.pos = pygame.Vector2(shifted_hitbox.center)
+                car.rect.center = shifted_hitbox.center
 
     def set_driver(self, visible):
         self.driver_visible = bool(visible and self.driver_image)
@@ -794,6 +838,9 @@ class Car(pygame.sprite.Sprite):
             # original_image = the base image currently selected for the car
 
         self.image = pygame.transform.rotate(self.original_image,self.angle)
+        self.rect = self.image.get_rect(center=self.hitbox.center)
+        self.mask = pygame.mask.from_surface(self.image)
+        self.collision_mask = self.build_collision_mask(self.angle)
 
     def accelerate(self, cars, dt):
         if self.check_road():
@@ -829,7 +876,8 @@ class Car(pygame.sprite.Sprite):
             elif self.speed < 0:
                 self.speed = min(self.speed + self.friction * dt, 0)
 
-        new_pos = self.pos + self.forward * self.speed * dt
+        new_pos = self.pos + (self.forward * self.speed + self.collision_velocity) * dt
+        self.collision_velocity *= max(0, 1 - 5 * dt)
 
         new_hitbox = self.hitbox.copy()
         new_hitbox.center = (round(new_pos.x), round(new_pos.y))
@@ -840,7 +888,7 @@ class Car(pygame.sprite.Sprite):
         if self.hits_obstacle(new_rect, self.mask):
             return
 
-        if self.hits_car(new_rect, self.mask, cars):
+        if self.hits_car(new_rect, self.collision_mask, cars):
             pushed_a_car = False
 
             for car in cars:
@@ -848,7 +896,7 @@ class Car(pygame.sprite.Sprite):
                     continue
 
                 offset = (car.rect.x - new_rect.x, car.rect.y - new_rect.y)
-                if not self.mask.overlap(car.mask, offset):
+                if not self.collision_mask.overlap(car.collision_mask, offset):
                     continue
 
                 if self.try_push_car(
@@ -858,6 +906,14 @@ class Car(pygame.sprite.Sprite):
                     break
 
             if not pushed_a_car:
+                for car in cars:
+                    if car is self or not new_rect.colliderect(car.rect):
+                        continue
+
+                    offset = (car.rect.x - new_rect.x, car.rect.y - new_rect.y)
+                    if self.collision_mask.overlap(car.collision_mask, offset):
+                        self.bounce_off_car(car)
+                        break
                 return
 
         if self.world.rect.contains(new_hitbox):
@@ -1008,7 +1064,7 @@ class Mission:
         self.player_lap = 1
 
         mission_3_start = pygame.Rect(3400, 3200, 400, 300)
-        mission_3_finish = pygame.Rect(4080, 3200, 40, 300)  # aligned with the visual stripe
+        mission_3_finish = pygame.Rect(4080, 3200, 40, 300)
         mission_4_start = pygame.Rect(1500, TRACK_BOTTOM - _HALF, 350, TRACK_WIDTH)
 
         self.race_configs = {
@@ -1017,7 +1073,7 @@ class Mission:
                 "laps": 2,
                 "start": mission_3_start,
                 "finish": mission_3_finish,
-                "stripe_x": 4100,  # center of the Mission 3 starting/finish stripe
+                "stripe_x": 4100,
                 "checkpoints": [
                     pygame.Rect(5100, 3200, 550, 300),  # bottom/east turn
                     pygame.Rect(5500, 450, 300, 1100),   # east road
@@ -1030,7 +1086,7 @@ class Mission:
                 "rivals": [
                     {
                         "car": "rival_car",
-                        "spawn": (3900, 3270),  # just behind the stripe, after the start zone
+                        "spawn": (3900, 3270),
                         "angle": -90,  # face east along the bottom road
                         "waypoints": [
                             (5350, 3350), (5650, 2800), (5650, 450), (5300, 250),
@@ -1148,7 +1204,7 @@ class Mission:
             car.active = False
             car.reverse_active = False
             car.push_remainder = pygame.Vector2()
-            car.image, car.rect, car.mask = car.build_image(car.angle)
+            car.image, car.rect, car.mask, car.collision_mask = car.build_image(car.angle)
             car.get_rotation()
             rival.reset()
 
@@ -1486,7 +1542,7 @@ mission.rival_car_2 = race_rival_car_2
 mission.cars = cars
 
 cars[0].angle = -90
-cars[0].image, cars[0].rect, cars[0].mask = cars[0].build_image(cars[0].angle)
+cars[0].image, cars[0].rect, cars[0].mask, cars[0].collision_mask = cars[0].build_image(cars[0].angle)
 cars[0].get_rotation()
 
 cars[0].engine_sound = buggy_engine_sound
