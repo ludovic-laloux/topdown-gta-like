@@ -22,7 +22,7 @@ OWL_FADE_OUT_START_HOUR = 5.0
 OWL_SILENT_HOUR = 6.0
 OWL_AMBIENCE_VOLUME = 0.45
 
-# MISSION 4 - THE RIVAL'S REVENGE: image of the second rival buggy
+# MISSION 4 - THE REVENGE: image of the second rival buggy
 RIVAL_2_IMAGE = "graphics/buggy/rival_buggy_2.png"
 
 # MISSION 4 - TRACK (empty area west of the houses)
@@ -1101,7 +1101,7 @@ class Mission:
                     },
                 ],
             },
-            # MISSION 4: the rival's revenge. Four laps against two buggies on the
+            # MISSION 4: the revenge. Four laps against two buggies on the
             # track west of the houses. Tune the rivals' speed here.
             4: {
                 "laps": 4,
@@ -1112,7 +1112,7 @@ class Mission:
                     pygame.Rect(1100, TRACK_TOP - _HALF, 400, TRACK_WIDTH),         # top
                     pygame.Rect(TRACK_RIGHT - _HALF, 1850, TRACK_WIDTH, 350),       # east side
                 ],
-                "intro": "MISSION 4: THE RIVAL'S REVENGE - Drive to the race start",
+                "intro": "MISSION 4: THE REVENGE - Drive to the race start",
                 "win": "YOU BEAT THEM BOTH!",
                 "lose": "THE RIVALS WON THE RACE!",
                 "rivals": [
@@ -1710,6 +1710,115 @@ camera_group.add(player)
 
 camera_target = player
 
+debug_menu_open = False
+debug_selected_mission = 0
+
+def start_debug_mission(number):
+    global camera_target
+
+    mission.number = number
+    mission.completed = False
+    mission.complete_timer = 0
+    mission.all_complete_timer = None
+    mission.race = None
+    mission.rivals = []
+    mission.race_state = "locked"
+    mission.race_countdown = 0.0
+    mission.race_result = ""
+    mission.race_result_timer = 0.0
+    mission.player_won = False
+    mission.player_checkpoint_index = 0
+    mission.player_lap = 1
+
+    # Park every rival off-screen; the selected race will place its opponents.
+    for rival_car in mission.rival_cars:
+        rival_car.active = False
+        rival_car.reverse_active = False
+        rival_car.direction = 0
+        rival_car.speed = 0
+        rival_car.collision_velocity = pygame.Vector2()
+        rival_car.set_driver(False)
+        rival_car.hitbox.center = (-1000, -1000)
+        rival_car.pos = pygame.Vector2(rival_car.hitbox.center)
+        rival_car.rect.center = rival_car.hitbox.center
+
+    # Return the player to walking mode before positioning for the chosen mission.
+    if player.current_car:
+        player.current_car.active = False
+        player.current_car.reverse_active = False
+        player.current_car.direction = 0
+        player.current_car.speed = 0
+        player.current_car.set_driver(False)
+    player.in_car = False
+    player.current_car = None
+    player.hitbox.midbottom = (4350, 1000)
+    player.pos = pygame.Vector2(player.hitbox.topleft)
+    player.rect.midbottom = player.hitbox.midbottom
+    player.movement = pygame.Vector2()
+    camera_group.add(player)
+    camera_target = player
+
+    if number == 1:
+        return
+
+    test_car = cars[0]
+    test_car.active = False
+    test_car.reverse_active = False
+    test_car.direction = 0
+    test_car.speed = 0
+    test_car.collision_velocity = pygame.Vector2()
+    test_car.push_remainder = pygame.Vector2()
+    test_car.set_driver(True)
+
+    if number == 2:
+        spawn = (3050, 3500)
+        angle = 90
+    elif number == 3:
+        spawn = (3550, 3350)
+        angle = -90
+    else:
+        start = mission.race_configs[4]["start"]
+        spawn = (start.centerx + 50, start.centery)
+        angle = 90
+
+    test_car.hitbox.center = spawn
+    test_car.pos = pygame.Vector2(test_car.hitbox.center)
+    test_car.angle = angle
+    test_car.image, test_car.rect, test_car.mask, test_car.collision_mask = test_car.build_image(angle)
+    test_car.get_rotation()
+    player.in_car = True
+    player.current_car = test_car
+    player.kill()
+    camera_target = test_car
+
+
+def draw_debug_menu(surface, selected):
+    shade = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
+    shade.fill((0, 0, 0, 175))
+    surface.blit(shade, (0, 0))
+
+    panel = pygame.Rect(0, 0, 580, 330)
+    panel.center = surface.get_rect().center
+    pygame.draw.rect(surface, (35, 40, 48), panel)
+    pygame.draw.rect(surface, (220, 225, 235), panel, 2)
+
+    title = font.render("DEBUG MENU - SELECT MISSION", True, (255, 230, 120))
+    surface.blit(title, (panel.x + 28, panel.y + 22))
+    options = [
+        "Mission 1 - Walk to location",
+        "Mission 2 - Drive to location",
+        "Mission 3 - Two-lap race",
+        "Mission 4 - The revenge",
+    ]
+    for index, option in enumerate(options):
+        color = (255, 240, 130) if index == selected else (240, 240, 240)
+        prefix = "> " if index == selected else "  "
+        label = font.render(prefix + option, True, color)
+        surface.blit(label, (panel.x + 30, panel.y + 78 + index * 48))
+
+    hint = font.render("ENTER: start   ESC: close", True, (190, 200, 210))
+    surface.blit(hint, (panel.x + 28, panel.bottom - 45))
+
 # GAME LOOP
 while True:
 
@@ -1721,7 +1830,37 @@ while True:
     for event in pygame.event.get():
 
 
-        # SHUTDOWN
+        if event.type == pygame.QUIT:
+            pygame.quit()
+            sys.exit()
+
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            if debug_menu_open:
+                debug_menu_open = False
+            else:
+                pygame.quit()
+                sys.exit()
+            continue
+
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_1:
+            debug_menu_open = not debug_menu_open
+            if debug_menu_open:
+                for car in cars:
+                    car.active = False
+                    car.reverse_active = False
+            continue
+
+        if debug_menu_open:
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_UP:
+                    debug_selected_mission = (debug_selected_mission - 1) % 4
+                elif event.key == pygame.K_DOWN:
+                    debug_selected_mission = (debug_selected_mission + 1) % 4
+                elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                    start_debug_mission(debug_selected_mission + 1)
+                    debug_menu_open = False
+            continue
+
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
             pygame.quit()
             sys.exit()
@@ -1809,6 +1948,9 @@ while True:
                         player.current_car = None
                     # if there is no free space, the player simply stays in the car
 
+    if debug_menu_open:
+        dt = 0
+
     # UPDATE
     day_night.update(dt)
     weather.update(dt)
@@ -1880,5 +2022,8 @@ while True:
     mission.draw(screen, camera_group)
     mission.draw_ui(screen)
     draw_minimap(screen, camera_target, mission)
+
+    if debug_menu_open:
+        draw_debug_menu(screen, debug_selected_mission)
 
     pygame.display.update()
