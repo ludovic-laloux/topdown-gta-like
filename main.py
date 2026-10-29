@@ -40,9 +40,6 @@ TRACK_ROADS = [
 ]
 # No fields or trees are generated inside this zone, so the track stays clear.
 TRACK_ZONE = pygame.Rect(350, 750, 1950, 1900)
-# Chequered start/finish line (x position, drawn across the bottom road)
-TRACK_FINISH_LINE_X = 1830
-
 
 def loop_waypoints(left, top, right, bottom, lead=300):
     """Racing line around the track for one lane (clockwise, corners cut at 45 degrees)."""
@@ -451,16 +448,6 @@ class World:
 
         for road in self.roads:
             pygame.draw.rect(self.surface, ROAD_COLOR, road) 
-
-        # Chequered start/finish line of the mission 4 track
-        for row in range(TRACK_WIDTH // 20):
-            for col in range(2):
-                color = (240, 240, 240) if (row + col) % 2 == 0 else (20, 20, 20)
-                pygame.draw.rect(
-                    self.surface,
-                    color,
-                    (TRACK_FINISH_LINE_X + col * 20, TRACK_BOTTOM - _HALF + row * 20, 20, 20)
-                )
 
         for house, image in zip(self.houses, self.house_images):
             self.surface.blit(image, house.topleft)
@@ -1021,6 +1008,7 @@ class Mission:
         self.player_lap = 1
 
         mission_3_start = pygame.Rect(3400, 3200, 400, 300)
+        mission_3_finish = pygame.Rect(4080, 3200, 40, 300)  # aligned with the visual stripe
         mission_4_start = pygame.Rect(1500, TRACK_BOTTOM - _HALF, 350, TRACK_WIDTH)
 
         self.race_configs = {
@@ -1028,7 +1016,8 @@ class Mission:
             3: {
                 "laps": 2,
                 "start": mission_3_start,
-                "finish": mission_3_start,
+                "finish": mission_3_finish,
+                "stripe_x": 4100,  # center of the Mission 3 starting/finish stripe
                 "checkpoints": [
                     pygame.Rect(5100, 3200, 550, 300),  # bottom/east turn
                     pygame.Rect(5500, 450, 300, 1100),   # east road
@@ -1041,7 +1030,7 @@ class Mission:
                 "rivals": [
                     {
                         "car": "rival_car",
-                        "spawn": (4000, 3270),
+                        "spawn": (3900, 3270),  # just behind the stripe, after the start zone
                         "angle": -90,  # face east along the bottom road
                         "waypoints": [
                             (5350, 3350), (5650, 2800), (5650, 450), (5300, 250),
@@ -1315,6 +1304,19 @@ class Mission:
                 self.number += 1
 
     def draw(self, surface, camera):
+        if self.number == 3 and self.race_state in ("waiting", "countdown", "running"):
+            start = self.race_configs[3]["start"]
+            cell = 20
+            stripe_x = self.race_configs[3]["stripe_x"] - cell
+
+            for row in range(start.height // cell):
+                for col in range(2):
+                    color = (240, 240, 240) if (row + col) % 2 == 0 else (20, 20, 20)
+                    screen_x = round((stripe_x + col * cell - camera.offset.x) * ZOOM)
+                    screen_y = round((start.y + row * cell - camera.offset.y) * ZOOM)
+                    size = round(cell * ZOOM)
+                    pygame.draw.rect(surface, color, (screen_x, screen_y, size, size))
+                    
         destination = self.current_destination()
         if destination is None:
             return
