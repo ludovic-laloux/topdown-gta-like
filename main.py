@@ -1112,37 +1112,13 @@ class CameraGroup(pygame.sprite.Group):
 
         self.display_surface.blit(self.world.scaled_surface, world_offset)
 
-        sprites = sorted(self.sprites(), key=lambda sprite: sprite.rect.centery)
-        foreground_sprites = []
-        for sprite in sprites:
-            # Keep the player and every vehicle above the ruts. Other scenery
-            # is drawn first so the ruts sit visibly on top of the field.
-            if isinstance(sprite, (Player, Car)):
-                foreground_sprites.append(sprite)
-                continue
-
-            scaled_image = pygame.transform.scale(
-                sprite.image,
-                (
-                    int(sprite.image.get_width() * ZOOM),
-                    int(sprite.image.get_height() * ZOOM)
-                )
-            )
-
-            position = (
-                pygame.Vector2(sprite.rect.topleft) * ZOOM
-                - self.offset * ZOOM
-            )
-
-            self.display_surface.blit(
-                scaled_image,
-                position
-            )
-
-        # Ruts belong to the world, so keep them visible regardless of mission state.
+        # Draw the ground marks first, then depth-sort every world sprite.
+        # The bottom edge is the sprite's ground contact point, so trees
+        # overlap players and vehicles correctly as they move past the trunk.
         draw_mission_4_ruts(self.display_surface, self)
 
-        for sprite in foreground_sprites:
+        sprites = sorted(self.sprites(), key=lambda sprite: sprite.rect.bottom)
+        for sprite in sprites:
             scaled_image = pygame.transform.scale(
                 sprite.image,
                 (
