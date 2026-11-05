@@ -155,8 +155,8 @@ class DayNightCycle:
 
     # (hour, tint RGB, tint opacity). Clear midday uses zero opacity.
     KEYFRAMES = (
-        (0.0, (14, 22, 56), 180),
-        (3.5, (18, 28, 66), 170),
+        (0.0, (14, 22, 56), 140),
+        (3.5, (18, 28, 66), 130),
         (5.0, (70, 65, 82), 100),
         (6.5, (255, 120, 55), 62),
         (8.0, (255, 165, 90), 35),
@@ -164,8 +164,8 @@ class DayNightCycle:
         (16.0, (0, 0, 0), 0),
         (17.5, (255, 170, 90), 24),
         (19.0, (255, 135, 65), 48),
-        (21.0, (45, 45, 105), 130),
-        (24.0, (14, 22, 56), 180),
+        (21.0, (45, 45, 105), 100),
+        (24.0, (14, 22, 56), 140),
     )
 
     def __init__(self, screen_size, day_length_seconds=DAY_LENGTH_SECONDS, start_hour=START_HOUR):
@@ -435,21 +435,47 @@ class World:
 
         self.house_images = [house_1, house_2]
 
-        # Street lamp across the road from the lower house; anchor at its base.
+        # Lamps run along the same roadside, spaced 600 world pixels apart.
         lamp_image = pygame.image.load("graphics/street_lamp_post.png").convert_alpha()
         self.street_lamp_image = pygame.transform.flip(lamp_image, True, False)
-        self.street_lamp_ground = (3420, 2850)
-        self.street_lamp_sprite = pygame.sprite.Sprite()
-        self.street_lamp_sprite.image = self.street_lamp_image
-        self.street_lamp_sprite.rect = self.street_lamp_image.get_rect(
-            midbottom=self.street_lamp_ground
-        )
-        # Only the pole's base blocks movement; the raised arm and lamp head do not.
-        self.street_lamp_collision_rect = pygame.Rect(
-            self.street_lamp_ground[0] - 14, self.street_lamp_ground[1] - 24, 28, 24
-        )
-        self.street_lamp_collision_mask = pygame.mask.Mask((28, 24), fill=True)
-        self.street_lamp_bulb_world = (3350, 2590)
+        self.street_lamp_grounds = [(3420, y) for y in range(750, 3151, 600)]
+        self.street_lamp_sprites = []
+        self.street_lamp_collision_rects = []
+        self.street_lamp_collision_masks = []
+        for ground in self.street_lamp_grounds:
+            sprite = pygame.sprite.Sprite()
+            sprite.image = self.street_lamp_image
+            sprite.rect = self.street_lamp_image.get_rect(midbottom=ground)
+            self.street_lamp_sprites.append(sprite)
+
+            # Only each pole's base blocks movement; its raised arm and head do not.
+            self.street_lamp_collision_rects.append(
+                pygame.Rect(ground[0] - 14, ground[1] - 24, 28, 24)
+            )
+            self.street_lamp_collision_masks.append(pygame.mask.Mask((28, 24), fill=True))
+
+        self.street_lamp_bulbs_world = [(x - 70, y - 260) for x, y in self.street_lamp_grounds]
+        lamp_wire_points = [(x - 10, y - 280) for x, y in self.street_lamp_grounds]
+        self.overhead_cable_spans = list(zip(lamp_wire_points, lamp_wire_points[1:]))
+        for house_index, house in enumerate(self.houses):
+            nearest_index = min(
+                range(len(self.street_lamp_grounds)),
+                key=lambda index: (
+                    (self.street_lamp_grounds[index][0] - house.right) ** 2
+                    + (self.street_lamp_grounds[index][1] - house.centery) ** 2
+                ),
+            )
+            lamp_anchor = lamp_wire_points[nearest_index]
+            if house_index == 1:
+                # Connect at the marked upper-right roof-to-wall corner.
+                house_anchor = (house.left + 430, house.top + 40)
+            else:
+                # Use the matching upper-right roof-to-wall corner on house one.
+                house_anchor = (house.left + 460, house.top + 40)
+            self.overhead_cable_spans.append(
+                (lamp_anchor, house_anchor)
+            )
+
         horizontal_cone = self._make_cone_glow_surface(
             (round(350 * ZOOM), round(240 * ZOOM)), 145
         )
@@ -484,7 +510,7 @@ class World:
         # Obstacles now include houses + hay bales + flower beds
         self.obstacles = (
             self.houses + self.hay_bales + self.flower_beds
-            + [self.street_lamp_collision_rect]
+            + self.street_lamp_collision_rects
         )
 
         self.obstacle_masks = (
@@ -493,8 +519,8 @@ class World:
             + [
                 pygame.mask.from_surface(self.flower_bed_triangle_image),
                 pygame.mask.from_surface(self.flower_bed_rect_image),
-                self.street_lamp_collision_mask,
             ]
+            + self.street_lamp_collision_masks
         )
 
         self.paths_to_houses = [
@@ -589,18 +615,57 @@ class World:
         if intensity <= 0:
             return
 
-        bulb_x, bulb_y = self.street_lamp_bulb_world
-        bulb_center = (
-            round((bulb_x - camera.offset.x) * ZOOM),
-            round((bulb_y - camera.offset.y) * ZOOM),
-        )
         cone = self.street_lamp_cone_glow
         cone.set_alpha(round(255 * intensity))
-        screen.blit(cone, cone.get_rect(midtop=bulb_center))
-
         core = self.street_lamp_bulb_core
         core.set_alpha(round(255 * intensity))
-        screen.blit(core, core.get_rect(center=bulb_center))
+        for bulb_x, bulb_y in self.street_lamp_bulbs_world:
+            bulb_center = (
+                round((bulb_x - camera.offset.x) * ZOOM),
+                round((bulb_y - camera.offset.y) * ZOOM),
+            )
+            screen.blit(cone, cone.get_rect(midtop=bulb_center))
+            screen.blit(core, core.get_rect(center=bulb_center))
+
+    def draw_overhead_cables(self, screen, camera):
+        """Render sagging power cables over the world sprites, without collision."""
+        for start, end in self.overhead_cable_spans:
+            dx = end[0] - start[0]
+            dy = end[1] - start[1]
+            length = max(1.0, math.hypot(dx, dy))
+            normal_x = -dy / length
+            normal_y = dx / length
+            # Let the cable sag toward the road; for a horizontal span, sag down.
+            if normal_x > 0 or (abs(normal_x) < 0.001 and normal_y < 0):
+                normal_x = -normal_x
+                normal_y = -normal_y
+            sag = min(30.0, max(12.0, length * 0.025))
+            control = (
+                (start[0] + end[0]) / 2 + normal_x * sag,
+                (start[1] + end[1]) / 2 + normal_y * sag,
+            )
+
+            points = []
+            for step in range(33):
+                amount = step / 32
+                inverse = 1 - amount
+                world_x = (
+                    inverse * inverse * start[0]
+                    + 2 * inverse * amount * control[0]
+                    + amount * amount * end[0]
+                )
+                world_y = (
+                    inverse * inverse * start[1]
+                    + 2 * inverse * amount * control[1]
+                    + amount * amount * end[1]
+                )
+                points.append((
+                    round((world_x - camera.offset.x) * ZOOM),
+                    round((world_y - camera.offset.y) * ZOOM),
+                ))
+
+            pygame.draw.lines(screen, (32, 31, 29), False, points, 2)
+            pygame.draw.aalines(screen, (78, 74, 67), False, points)
 
     def fill_tiled(self, rect, tile):
         self.surface.set_clip(rect)
@@ -1724,7 +1789,7 @@ mission = Mission()
 
 for tree in world.trees:
     camera_group.add(tree)
-camera_group.add(world.street_lamp_sprite)
+camera_group.add(*world.street_lamp_sprites)
 
 # SOUND SETUP
 bg_birdsounds = pygame.mixer.Sound("sounds/morning_birds.mp3")
@@ -1762,9 +1827,9 @@ cars = [
     tractor_car,
     Car((2900, 1000), world, "graphics/Jeep.png", (-60,-60), 1000, 1000),
     Car((2700, 1000), world, "graphics/bouboul.png", (-20, -20), 600, 300),
-    Car((3430, 2500), world, "graphics/audi_v2.png", (-20, -20), 900, 500),
-    Car((3430, 2300), world, "graphics/audi_v3.png", (-20, -20), 900, 500),
-    Car((3430, 2100), world, "graphics/circlus_red.png", (-20, -20), 900, 500)
+    Car((3430, 1500), world, "graphics/audi_v2.png", (-20, -20), 900, 500),
+    Car((3430, 2200), world, "graphics/audi_v3.png", (-20, -20), 900, 500),
+    Car((3430, 2000), world, "graphics/circlus_red.png", (-20, -20), 900, 500)
 ]
 
 # Race rivals wait off the map until their mission starts.
@@ -2225,6 +2290,7 @@ while True:
 
     # DRAW
     camera_group.custom_draw(camera_target, mission)
+    world.draw_overhead_cables(screen, camera_group)
     weather.draw(screen, camera_group)
     day_night.draw(screen)  # tint the world once; keep UI clear
     world.draw_street_lamp_light(screen, camera_group, day_night.hour)
