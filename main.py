@@ -155,8 +155,8 @@ class DayNightCycle:
 
     # (hour, tint RGB, tint opacity). Clear midday uses zero opacity.
     KEYFRAMES = (
-        (0.0, (14, 22, 56), 140),
-        (3.5, (18, 28, 66), 130),
+        (0.0, (14, 22, 56), 180),
+        (3.5, (18, 28, 66), 170),
         (5.0, (70, 65, 82), 100),
         (6.5, (255, 120, 55), 62),
         (8.0, (255, 165, 90), 35),
@@ -164,8 +164,8 @@ class DayNightCycle:
         (16.0, (0, 0, 0), 0),
         (17.5, (255, 170, 90), 24),
         (19.0, (255, 135, 65), 48),
-        (21.0, (45, 45, 105), 100),
-        (24.0, (14, 22, 56), 140),
+        (21.0, (45, 45, 105), 130),
+        (24.0, (14, 22, 56), 180),
     )
 
     def __init__(self, screen_size, day_length_seconds=DAY_LENGTH_SECONDS, start_hour=START_HOUR):
