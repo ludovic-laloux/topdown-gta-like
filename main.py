@@ -155,15 +155,17 @@ class DayNightCycle:
 
     # (hour, tint RGB, tint opacity). Clear midday uses zero opacity.
     KEYFRAMES = (
-        (0.0, (20, 28, 72), 115),
-        (4.5, (30, 38, 82), 105),
-        (6.0, (255, 120, 55), 62),
-        (8.0, (255, 190, 110), 20),
-        (9.0, (0, 0, 0), 0),
+        (0.0, (14, 22, 56), 140),
+        (3.5, (18, 28, 66), 130),
+        (5.0, (70, 65, 82), 100),
+        (6.5, (255, 120, 55), 62),
+        (8.0, (255, 165, 90), 35),
+        (9.5, (0, 0, 0), 0),
         (16.0, (0, 0, 0), 0),
-        (18.0, (255, 135, 65), 48),
-        (20.0, (55, 55, 115), 82),
-        (24.0, (20, 28, 72), 115),
+        (17.5, (255, 170, 90), 24),
+        (19.0, (255, 135, 65), 48),
+        (21.0, (45, 45, 105), 100),
+        (24.0, (14, 22, 56), 140),
     )
 
     def __init__(self, screen_size, day_length_seconds=DAY_LENGTH_SECONDS, start_hour=START_HOUR):
@@ -433,6 +435,32 @@ class World:
 
         self.house_images = [house_1, house_2]
 
+        # Street lamp across the road from the lower house; anchor at its base.
+        lamp_image = pygame.image.load("graphics/street_lamp_post.png").convert_alpha()
+        self.street_lamp_image = pygame.transform.flip(lamp_image, True, False)
+        self.street_lamp_ground = (3420, 2850)
+        self.street_lamp_sprite = pygame.sprite.Sprite()
+        self.street_lamp_sprite.image = self.street_lamp_image
+        self.street_lamp_sprite.rect = self.street_lamp_image.get_rect(
+            midbottom=self.street_lamp_ground
+        )
+        # Only the pole's base blocks movement; the raised arm and lamp head do not.
+        self.street_lamp_collision_rect = pygame.Rect(
+            self.street_lamp_ground[0] - 14, self.street_lamp_ground[1] - 24, 28, 24
+        )
+        self.street_lamp_collision_mask = pygame.mask.Mask((28, 24), fill=True)
+        self.street_lamp_bulb_world = (3350, 2590)
+        horizontal_cone = self._make_cone_glow_surface(
+            (round(350 * ZOOM), round(240 * ZOOM)), 145
+        )
+        # The generated beam points left (pi); rotate it to the requested
+        # -pi/2 screen direction so it runs from the bulb down toward the street.
+        self.street_lamp_cone_glow = pygame.transform.rotate(
+            horizontal_cone, math.degrees(-math.pi / 2 - math.pi)
+        )
+        self.street_lamp_bulb_core = pygame.Surface((12, 12), pygame.SRCALPHA)
+        pygame.draw.circle(self.street_lamp_bulb_core, (255, 236, 178, 255), (6, 6), 4)
+
         # Flower beds (defined early so they can be part of obstacles)
         self.flower_bed_triangle_image = pygame.image.load(
             "graphics/flower_bed_triangle.png"
@@ -454,14 +482,18 @@ class World:
         ]
 
         # Obstacles now include houses + hay bales + flower beds
-        self.obstacles = self.houses + self.hay_bales + self.flower_beds
+        self.obstacles = (
+            self.houses + self.hay_bales + self.flower_beds
+            + [self.street_lamp_collision_rect]
+        )
 
         self.obstacle_masks = (
             [pygame.mask.from_surface(image) for image in self.house_images]
             + [pygame.mask.Mask(bale.size, fill=True) for bale in self.hay_bales]
             + [
                 pygame.mask.from_surface(self.flower_bed_triangle_image),
-                pygame.mask.from_surface(self.flower_bed_rect_image)
+                pygame.mask.from_surface(self.flower_bed_rect_image),
+                self.street_lamp_collision_mask,
             ]
         )
 
@@ -508,6 +540,67 @@ class World:
         self.scaled_surface = pygame.transform.scale(
             self.surface,(int(self.surface.get_width() * ZOOM), int(self.surface.get_height() * ZOOM))
             )
+
+    @staticmethod
+    def _make_cone_glow_surface(size, max_alpha):
+        """Build a soft cone with its source at the right, aimed across the road."""
+        cone = pygame.Surface(size, pygame.SRCALPHA)
+        width, height = size
+        center_y = height // 2
+        layers = 64
+        for layer in range(layers, 0, -1):
+            fraction = layer / layers
+            half_height = max(1, round((height / 2 - 1) * fraction))
+            length = max(1, round((width - 1 - (height / 2 - 1)) * fraction))
+            alpha = round(10 + (max_alpha - 10) * (1 - fraction) ** 0.8)
+            source_x = width - 1
+            end_x = source_x - length
+            points = [(source_x, center_y)]
+            samples = 24
+            for sample in range(1, samples + 1):
+                amount = sample / samples
+                x = source_x - length * amount
+                radius = half_height * math.sqrt(amount)
+                points.append((round(x), round(center_y - radius)))
+            for sample in range(1, samples + 1):
+                angle = -math.pi / 2 + math.pi * sample / samples
+                x = end_x - half_height * math.cos(angle)
+                y = center_y + half_height * math.sin(angle)
+                points.append((round(x), round(y)))
+            for sample in range(samples - 1, 0, -1):
+                amount = sample / samples
+                x = source_x - length * amount
+                radius = half_height * math.sqrt(amount)
+                points.append((round(x), round(center_y + radius)))
+            points.append((source_x, center_y))
+            pygame.draw.polygon(cone, (255, 205, 125, alpha), points)
+        return cone
+
+    def draw_street_lamp_light(self, screen, camera, hour):
+        """Draw a west-facing road-light cone and bulb halo at night."""
+        if 17.5 <= hour < 20.5:
+            intensity = (hour - 17.5) / 3.0
+        elif hour >= 20.5 or hour < 5.0:
+            intensity = 1.0
+        elif 5.0 <= hour < 8.0:
+            intensity = (8.0 - hour) / 3.0
+        else:
+            intensity = 0.0
+        if intensity <= 0:
+            return
+
+        bulb_x, bulb_y = self.street_lamp_bulb_world
+        bulb_center = (
+            round((bulb_x - camera.offset.x) * ZOOM),
+            round((bulb_y - camera.offset.y) * ZOOM),
+        )
+        cone = self.street_lamp_cone_glow
+        cone.set_alpha(round(255 * intensity))
+        screen.blit(cone, cone.get_rect(midtop=bulb_center))
+
+        core = self.street_lamp_bulb_core
+        core.set_alpha(round(255 * intensity))
+        screen.blit(core, core.get_rect(center=bulb_center))
 
     def fill_tiled(self, rect, tile):
         self.surface.set_clip(rect)
@@ -1631,6 +1724,7 @@ mission = Mission()
 
 for tree in world.trees:
     camera_group.add(tree)
+camera_group.add(world.street_lamp_sprite)
 
 # SOUND SETUP
 bg_birdsounds = pygame.mixer.Sound("sounds/morning_birds.mp3")
@@ -2132,8 +2226,8 @@ while True:
     # DRAW
     camera_group.custom_draw(camera_target, mission)
     weather.draw(screen, camera_group)
-    day_night.draw(screen)  # tint world; keep mission/minimap UI clear
-    day_night.draw(screen)  # tint world and keep the clock readable
+    day_night.draw(screen)  # tint the world once; keep UI clear
+    world.draw_street_lamp_light(screen, camera_group, day_night.hour)
 
     mission.draw(screen, camera_group)
     mission.draw_ui(screen)
