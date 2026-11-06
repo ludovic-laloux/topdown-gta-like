@@ -1202,6 +1202,61 @@ class Car(pygame.sprite.Sprite):
         self.get_rotation()
 
 
+class SmokeParticle(pygame.sprite.Sprite):
+    """A soft dark puff emitted from the tractor's exhaust pipe."""
+
+    def __init__(self, position, velocity, lifetime):
+        super().__init__()
+        self.position = pygame.Vector2(position)
+        self.velocity = pygame.Vector2(velocity)
+        self.lifetime = lifetime
+        self.age = 0.0
+        self.image = pygame.Surface((32, 32), pygame.SRCALPHA)
+        self.rect = self.image.get_rect(center=(round(position[0]), round(position[1])))
+        self.refresh_image()
+
+    def refresh_image(self):
+        self.image.fill((0, 0, 0, 0))
+        center = (16, 16)
+        radius = min(14, round(4 + self.age * 10))
+        pygame.draw.circle(self.image, (42, 40, 38, 140), center, radius)
+        pygame.draw.circle(
+            self.image, (20, 19, 18, 195), center, max(1, round(radius * 0.68))
+        )
+        pygame.draw.circle(
+            self.image, (8, 8, 8, 225), center, max(1, round(radius * 0.34))
+        )
+        self.image.set_alpha(round(255 * max(0.0, 1.0 - self.age / self.lifetime)))
+        self.rect = self.image.get_rect(
+            center=(round(self.position.x), round(self.position.y))
+        )
+
+    def draw(self, surface, camera):
+        image = pygame.transform.scale(
+            self.image,
+            (
+                max(1, round(self.image.get_width() * ZOOM)),
+                max(1, round(self.image.get_height() * ZOOM)),
+            ),
+        )
+        screen_center = (
+            round((self.position.x - camera.offset.x) * ZOOM),
+            round((self.position.y - camera.offset.y) * ZOOM),
+        )
+        surface.blit(image, image.get_rect(center=screen_center))
+
+    def update(self, dt):
+        self.age += dt
+        if self.age >= self.lifetime:
+            self.kill()
+            return False
+
+        self.position += self.velocity * dt
+        self.velocity *= max(0.0, 1.0 - 0.8 * dt)
+        self.refresh_image()
+        return True
+
+
 def draw_mission_4_ruts(surface, camera):
     """Draw the paired, irregular dirt tire marks above the map scenery."""
     overlay = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
@@ -1982,6 +2037,8 @@ for car in cars:
     camera_group.add(car)
 
 camera_group.add(player)
+tractor_smoke_particles = []
+tractor_smoke_timer = 0.0
 
 camera_target = player
 
@@ -2229,8 +2286,35 @@ while True:
     # UPDATE
     day_night.update(dt)
     weather.update(dt)
+    tractor_previous_center = pygame.Vector2(tractor_car.rect.center)
     for car in cars:
         car.update(cars, dt)
+
+    tractor_motion = pygame.Vector2(tractor_car.rect.center) - tractor_previous_center
+    if dt > 0 and tractor_motion.length_squared() > 0.25:
+        tractor_smoke_timer += dt
+        travel_direction = tractor_motion.normalize()
+        exhaust_offset = pygame.Vector2(18, -90).rotate(-tractor_car.angle)
+        exhaust_position = pygame.Vector2(tractor_car.rect.center) + exhaust_offset
+        sideways = pygame.Vector2(-travel_direction.y, travel_direction.x)
+        while tractor_smoke_timer >= 0.055:
+            tractor_smoke_timer -= 0.055
+            smoke_velocity = (
+                -travel_direction * random.uniform(20, 38)
+                + sideways * random.uniform(-10, 10)
+            )
+            puff = SmokeParticle(
+                exhaust_position,
+                smoke_velocity,
+                random.uniform(0.85, 1.0),
+            )
+            tractor_smoke_particles.append(puff)
+    else:
+        tractor_smoke_timer = 0.0
+
+    for puff in tractor_smoke_particles[:]:
+        if not puff.update(dt):
+            tractor_smoke_particles.remove(puff)
 
     player.update(cars, dt)
     mission.update(player, dt)
@@ -2290,6 +2374,8 @@ while True:
 
     # DRAW
     camera_group.custom_draw(camera_target, mission)
+    for puff in tractor_smoke_particles:
+        puff.draw(screen, camera_group)
     world.draw_overhead_cables(screen, camera_group)
     weather.draw(screen, camera_group)
     day_night.draw(screen)  # tint the world once; keep UI clear
