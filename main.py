@@ -19,6 +19,74 @@ OWL_FADE_OUT_START_HOUR = 5.0
 OWL_SILENT_HOUR = 6.0
 OWL_AMBIENCE_VOLUME = 0.45
 RIVAL_2_IMAGE = "graphics/buggy/rival_buggy_2.png"
+MINIMAP_RADIUS = 45            
+MINIMAP_MARGIN = 20
+MINIMAP_SCALE = 0.15                 # minimap px per world px (bigger = more zoomed in)
+
+class Minimap:
+    """Circular minimap that follows a target and points at the mission objective."""
+
+    def __init__(self, world, radius=MINIMAP_RADIUS, margin=MINIMAP_MARGIN,
+                 scale=MINIMAP_SCALE, screen_size=(SCREEN_WIDTH, SCREEN_HEIGHT)):
+        self.world = world
+        self.radius = radius
+        self.scale = scale
+        self.diameter = radius * 2
+        self.center = (screen_size[0] - radius - margin,
+                       screen_size[1] - radius - margin)
+
+        self.view = pygame.Surface((self.diameter, self.diameter), pygame.SRCALPHA)
+        self.mask = pygame.Surface((self.diameter, self.diameter), pygame.SRCALPHA)
+        pygame.draw.circle(self.mask, (255, 255, 255, 255), (radius, radius), radius)
+
+        self.rebuild()
+
+    def rebuild(self):
+        """Re-shrink the world. Call again if the world surface is redrawn."""
+        size = (int(self.world.rect.width * self.scale),
+                int(self.world.rect.height * self.scale))
+        self.world_image = pygame.transform.smoothscale(self.world.surface, size)
+
+    def draw(self, surface, target, mission):
+        R = self.radius
+        cx, cy = self.center
+
+        # Player position on the shrunken world
+        px = target.rect.centerx * self.scale
+        py = target.rect.centery * self.scale
+
+        # Draw the area around the player, then cut it into a circle
+        self.view.fill((25, 25, 25, 255))
+        self.view.blit(self.world_image, (R - px, R - py))
+        self.view.blit(self.mask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+        surface.blit(self.view, (cx - R, cy - R))
+
+        self._draw_objective(surface, mission, px, py)
+
+        # Player is always in the center
+        pygame.draw.circle(surface, (255, 255, 255), (cx, cy), 6)
+        pygame.draw.circle(surface, (220, 30, 30), (cx, cy), 4)
+
+        # Border
+        pygame.draw.circle(surface, (255, 255, 255), (cx, cy), R, 3)
+
+    def _draw_objective(self, surface, mission, px, py):
+        destination = mission.current_destination()
+        if not destination:
+            return
+
+        cx, cy = self.center
+        offset = pygame.Vector2(
+            destination.centerx * self.scale - px,
+            destination.centery * self.scale - py,
+        )
+        max_dist = self.radius - 8
+        if offset.length() > max_dist:
+            offset.scale_to_length(max_dist)
+
+        pos = (int(cx + offset.x), int(cy + offset.y))
+        pygame.draw.circle(surface, (255, 255, 255), pos, 7)
+        pygame.draw.circle(surface, (100, 0, 255), pos, 5)
 
 class RevengeRaceTrack:
     """Geometry, racing lines, checkpoints, and ground marks for Mission 4."""
@@ -591,12 +659,6 @@ class World:
                 
             tree = Tree((x, y), self.tree_image)
             self.trees.append(tree)
-
-        self.draw_map()
-
-        self.scaled_surface = pygame.transform.scale(
-            self.surface,(int(self.surface.get_width() * ZOOM), int(self.surface.get_height() * ZOOM))
-            )
 
     @staticmethod
     def _make_cone_glow_surface(size, max_alpha):
@@ -1319,7 +1381,7 @@ class CameraGroup(pygame.sprite.Group):
             )
         )
 
-    def custom_draw(self, target, mission=None):
+    def custom_draw(self, target):
         self.center_target_camera(target)
 
         world_offset = -self.offset * ZOOM
@@ -1783,43 +1845,6 @@ class Mission:
                 return config["finish"]
         return None
 
-def draw_minimap(surface, target, mission):
-    R = MINIMAP_RADIUS
-    cx = SCREEN_WIDTH - R - MINIMAP_MARGIN
-    cy = SCREEN_HEIGHT - R - MINIMAP_MARGIN
-
-    # Player position on the shrunken world
-    px = target.rect.centerx * MINIMAP_SCALE
-    py = target.rect.centery * MINIMAP_SCALE
-
-    # Draw the part of the map around the player, then cut it into a circle
-    minimap_view.fill((25, 25, 25, 255))
-    minimap_view.blit(minimap_world, (R - px, R - py))
-    minimap_view.blit(minimap_mask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
-
-    surface.blit(minimap_view, (cx - R, cy - R))
-
-    # Mission objective: clamped to the rim when it's out of view
-    destination = mission.current_destination()
-    if destination:
-        offset = pygame.Vector2(
-            destination.centerx * MINIMAP_SCALE - px,
-            destination.centery * MINIMAP_SCALE - py,
-        )
-        max_dist = R - 8
-        if offset.length() > max_dist:
-            offset.scale_to_length(max_dist)
-
-        pos = (int(cx + offset.x), int(cy + offset.y))
-        pygame.draw.circle(surface, (255, 255, 255), pos, 7)
-        pygame.draw.circle(surface, (100, 0, 255), pos, 5)
-
-    # Player is always in the center
-    pygame.draw.circle(surface, (255, 255, 255), (cx, cy), 6)
-    pygame.draw.circle(surface, (220, 30, 30), (cx, cy), 4)
-
-    # Border
-    pygame.draw.circle(surface, (255, 255, 255), (cx, cy), R, 3)
 
 # INIT
 pygame.init()
@@ -1850,16 +1875,11 @@ owl_ambience_channel = owl_ambience.play(loops=-1)
 if owl_ambience_channel:
     owl_ambience_channel.set_volume(0)
 
-car_engine_sound = pygame.mixer.Sound("sounds/car_engine_loop.ogg")
-car_engine_sound.set_volume(0)
-
 tractor_engine_sound = pygame.mixer.Sound("sounds/tractor_engine_loop.wav")
 tractor_engine_sound.set_volume(0)
-tractor_engine_volume = 0
 
 buggy_engine_sound = pygame.mixer.Sound("sounds/buggy_engine_loop.wav")
 buggy_engine_sound.set_volume(0)
-buggy_engine_volume = 0
 
 # VEHICLE GRAPHICS
 buggy = "graphics/buggy/buggy.png"
@@ -1948,7 +1968,6 @@ for bale in world.hay_bales:
                 bale.topleft = candidate.topleft
                 break
 
-world.surface.fill(BG_GRASS_COLOR)
 world.draw_map()
 world.scaled_surface = pygame.transform.scale(
     world.surface,
@@ -1958,23 +1977,7 @@ world.scaled_surface = pygame.transform.scale(
     )
 )
 
-# MINIMAP SETUP
-MINIMAP_RADIUS = 45            
-MINIMAP_MARGIN = 20
-MINIMAP_SCALE = 0.15                 # minimap px per world px (bigger = more zoomed in)
-MINIMAP_D = MINIMAP_RADIUS * 2
-
-# whole world shrunk once (6000x4000 -> 900x600)
-minimap_world = pygame.transform.smoothscale(
-    world.surface,
-    (int(world.rect.width * MINIMAP_SCALE), int(world.rect.height * MINIMAP_SCALE))
-)
-
-# reusable surfaces
-minimap_view = pygame.Surface((MINIMAP_D, MINIMAP_D), pygame.SRCALPHA)
-minimap_mask = pygame.Surface((MINIMAP_D, MINIMAP_D), pygame.SRCALPHA)
-minimap_mask.fill((0, 0, 0, 0))
-pygame.draw.circle(minimap_mask, (255, 255, 255, 255), (MINIMAP_RADIUS, MINIMAP_RADIUS), MINIMAP_RADIUS)
+minimap = Minimap(world)
 
 # TRACTOR MOVING WHEELS
 # Create forward-rolling tread phases from the tractor's base image.
@@ -2187,14 +2190,6 @@ while True:
                     debug_menu_open = False
             continue
 
-        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-            pygame.quit()
-            sys.exit()
-
-        elif event.type == pygame.QUIT:
-            pygame.quit()
-            sys.exit()
-
 
         # CAR CONTROLS
         if event.type == pygame.KEYDOWN:
@@ -2367,7 +2362,7 @@ while True:
         car.engine_sound.set_volume(car.engine_volume)
 
     # DRAW
-    camera_group.custom_draw(camera_target, mission)
+    camera_group.custom_draw(camera_target)
     for puff in tractor_smoke_particles:
         puff.draw(screen, camera_group)
     world.draw_overhead_cables(screen, camera_group)
@@ -2377,7 +2372,7 @@ while True:
 
     mission.draw(screen, camera_group)
     mission.draw_ui(screen)
-    draw_minimap(screen, camera_target, mission)
+    minimap.draw(screen, camera_target, mission)
 
     if debug_menu_open:
         draw_debug_menu(screen, debug_selected_mission)
