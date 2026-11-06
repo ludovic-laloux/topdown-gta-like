@@ -6,149 +6,180 @@ SCREEN_HEIGHT = 720
 BG_GRASS_COLOR = (120, 150, 80)
 FIELD_COLOR = (100,140,20)
 ROAD_COLOR = (80,80,70)
-BALE_COLOR = (156, 36, 11)
 ZOOM = 0.75
-
-# One complete in-game day lasts this many real seconds. Change this to tune the pace.
 DAY_LENGTH_SECONDS = 120
 START_HOUR = 13.0
-BIRDSONG_FADE_START_HOUR = 19.0
-BIRDSONG_SILENT_HOUR = 20.0
-DAWN_SONG_START_HOUR = 5.0
-DAWN_SONG_FULL_HOUR = 6.0
+BIRDSOUND_FADE_START_HOUR = 19.0
+BIRDSOUND_SILENT_HOUR = 20.0
+BIRDSOUND_START_HOUR = 5.0
+BIRDSOUND_FULL_HOUR = 6.0
 OWL_FADE_START_HOUR = 19.0
 OWL_FULL_VOLUME_HOUR = 20.0
 OWL_FADE_OUT_START_HOUR = 5.0
 OWL_SILENT_HOUR = 6.0
 OWL_AMBIENCE_VOLUME = 0.45
-
-# MISSION 4 - THE REVENGE: image of the second rival buggy
 RIVAL_2_IMAGE = "graphics/buggy/rival_buggy_2.png"
 
-# MISSION 4 - TRACK (empty area west of the houses)
-# The loop is described by its centre line; the road is TRACK_WIDTH wide around it.
-# Race direction: clockwise (west along the bottom, north up the west side...).
-TRACK_LEFT, TRACK_TOP, TRACK_RIGHT, TRACK_BOTTOM = 600, 1000, 2000, 2400
-TRACK_WIDTH = 300
-_HALF = TRACK_WIDTH // 2
-TRACK_ROADS = [
-    pygame.Rect(TRACK_LEFT - _HALF, TRACK_TOP - _HALF, TRACK_RIGHT - TRACK_LEFT + TRACK_WIDTH, TRACK_WIDTH),   # top
-    pygame.Rect(TRACK_LEFT - _HALF, TRACK_BOTTOM - _HALF, TRACK_RIGHT - TRACK_LEFT + TRACK_WIDTH, TRACK_WIDTH),  # bottom
-    pygame.Rect(TRACK_LEFT - _HALF, TRACK_TOP - _HALF, TRACK_WIDTH, TRACK_BOTTOM - TRACK_TOP + TRACK_WIDTH),   # west side
-    pygame.Rect(TRACK_RIGHT - _HALF, TRACK_TOP - _HALF, TRACK_WIDTH, TRACK_BOTTOM - TRACK_TOP + TRACK_WIDTH),  # east side
-    pygame.Rect(TRACK_RIGHT + _HALF, 1500, 3000 - (TRACK_RIGHT + _HALF), 300),   # link road to the main west road
-]
-# No fields or trees are generated inside this zone, so the track stays clear.
-TRACK_ZONE = pygame.Rect(350, 750, 1950, 1900)
-def loop_waypoints(left, top, right, bottom, lead=300):
-    """Racing line around the track for one lane (clockwise, corners cut at 45 degrees)."""
-    return [
-        (left + lead, bottom), (left, bottom - lead),    # south-west corner
-        (left, top + lead), (left + lead, top),          # north-west corner
-        (right - lead, top), (right, top + lead),        # north-east corner
-        (right, bottom - lead), (right - lead, bottom),  # south-east corner
-    ]
+class RevengeRaceTrack:
+    """Geometry, racing lines, checkpoints, and ground marks for Mission 4."""
 
+    LEFT, TOP, RIGHT, BOTTOM = 600, 1000, 2000, 2400
+    WIDTH = 300
+    HALF_WIDTH = WIDTH // 2
+    LANE_OFFSET = 55
 
-LANE_OFFSET = 55
-INNER_LANE = loop_waypoints(TRACK_LEFT + LANE_OFFSET, TRACK_TOP + LANE_OFFSET,
-                            TRACK_RIGHT - LANE_OFFSET, TRACK_BOTTOM - LANE_OFFSET)
-OUTER_LANE = loop_waypoints(TRACK_LEFT - LANE_OFFSET, TRACK_TOP - LANE_OFFSET,
-                            TRACK_RIGHT + LANE_OFFSET, TRACK_BOTTOM + LANE_OFFSET)
+    def __init__(self):
+        # Keep scenery out of the track area while the world is generated.
+        self.zone = pygame.Rect(350, 750, 1950, 1900)
 
-
-def round_track_corners(points, corner_cut=125, curve_steps=10):
-    """Replace sharp polyline corners with short quadratic curves."""
-    count = len(points)
-    entries = []
-    exits = []
-
-    for index, point in enumerate(points):
-        previous = pygame.Vector2(points[(index - 1) % count])
-        current = pygame.Vector2(point)
-        following = pygame.Vector2(points[(index + 1) % count])
-        incoming = (current - previous).normalize()
-        outgoing = (following - current).normalize()
-        cut = min(
-            corner_cut,
-            (current - previous).length() * 0.35,
-            (following - current).length() * 0.35,
+        self.centerline = self._loop_waypoints(
+            self.LEFT, self.TOP, self.RIGHT, self.BOTTOM
         )
-        entries.append(current - incoming * cut)
-        exits.append(current + outgoing * cut)
+        self.inner_lane = self._loop_waypoints(
+            self.LEFT + self.LANE_OFFSET,
+            self.TOP + self.LANE_OFFSET,
+            self.RIGHT - self.LANE_OFFSET,
+            self.BOTTOM - self.LANE_OFFSET,
+        )
+        self.outer_lane = self._loop_waypoints(
+            self.LEFT - self.LANE_OFFSET,
+            self.TOP - self.LANE_OFFSET,
+            self.RIGHT + self.LANE_OFFSET,
+            self.BOTTOM + self.LANE_OFFSET,
+        )
+        self.inner_spawn = (1250, self.BOTTOM - self.LANE_OFFSET)
+        self.outer_spawn = (1100, self.BOTTOM + self.LANE_OFFSET)
 
-    rounded = []
-    for index in range(count):
-        entry = entries[index]
-        corner = pygame.Vector2(points[index])
-        exit_point = exits[index]
+        self.start = pygame.Rect(
+            1500, self.BOTTOM - self.HALF_WIDTH, 350, self.WIDTH
+        )
+        self.finish = self.start.copy()
+        self.checkpoints = [
+            pygame.Rect(self.LEFT - self.HALF_WIDTH, 1500, self.WIDTH, 400),
+            pygame.Rect(1100, self.TOP - self.HALF_WIDTH, 400, self.WIDTH),
+            pygame.Rect(self.RIGHT - self.HALF_WIDTH, 1850, self.WIDTH, 350),
+        ]
+        self.rut_lines = self._build_rut_lines(self.centerline)
 
-        # Quadratic Bezier arc: its ends line up smoothly with both straights.
-        for step in range(curve_steps):
-            amount = step / curve_steps
-            point = (
-                entry * (1 - amount) ** 2
-                + corner * (2 * (1 - amount) * amount)
-                + exit_point * amount ** 2
-            )
-            rounded.append(point)
+    @staticmethod
+    def _loop_waypoints(left, top, right, bottom, lead=300):
+        """Make eight clockwise lane targets with diagonal corner cuts."""
+        return [
+            (left + lead, bottom), (left, bottom - lead),
+            (left, top + lead), (left + lead, top),
+            (right - lead, top), (right, top + lead),
+            (right, bottom - lead), (right - lead, bottom),
+        ]
 
-        next_entry = entries[(index + 1) % count]
-        straight_length = (next_entry - exit_point).length()
-        straight_steps = max(1, math.ceil(straight_length / 34))
-        for step in range(straight_steps):
-            amount = step / straight_steps
-            rounded.append(exit_point + (next_entry - exit_point) * amount)
+    @staticmethod
+    def _round_track_corners(points, corner_cut=125, curve_steps=10):
+        """Replace sharp polyline corners with short quadratic curves."""
+        count = len(points)
+        entries = []
+        exits = []
 
-    return rounded
-
-
-def build_rut_lines(centerline, tire_spacing=52, sample_spacing=34, seed=404):
-    """Build two slightly uneven tire ruts along a closed racing line."""
-    centerline = round_track_corners(centerline)
-    rng = random.Random(seed)
-    lines = []
-    count = len(centerline)
-
-    for side in (-1, 1):
-        offset_points = []
-        for index, point in enumerate(centerline):
-            previous = pygame.Vector2(centerline[(index - 1) % count])
+        for index, point in enumerate(points):
+            previous = pygame.Vector2(points[(index - 1) % count])
             current = pygame.Vector2(point)
-            following = pygame.Vector2(centerline[(index + 1) % count])
+            following = pygame.Vector2(points[(index + 1) % count])
             incoming = (current - previous).normalize()
             outgoing = (following - current).normalize()
-            normal_in = pygame.Vector2(-incoming.y, incoming.x)
-            normal_out = pygame.Vector2(-outgoing.y, outgoing.x)
-            bisector = normal_in + normal_out
-            if bisector.length_squared() == 0:
-                bisector = normal_out
-            else:
-                bisector = bisector.normalize()
-            scale = tire_spacing / max(0.35, abs(bisector.dot(normal_out)))
-            offset_points.append(current + bisector * scale * side)
+            cut = min(
+                corner_cut,
+                (current - previous).length() * 0.35,
+                (following - current).length() * 0.35,
+            )
+            entries.append(current - incoming * cut)
+            exits.append(current + outgoing * cut)
 
-        sampled = []
-        for index, start in enumerate(offset_points):
-            end = offset_points[(index + 1) % count]
-            segment = end - start
-            distance = segment.length()
-            steps = max(1, math.ceil(distance / sample_spacing))
-            normal = pygame.Vector2(-segment.y, segment.x).normalize()
-            for step in range(steps):
-                amount = step / steps
-                point = start + segment * amount
-                point += normal * rng.uniform(-4.5, 4.5)
-                sampled.append((round(point.x), round(point.y)))
-        lines.append(sampled)
+        rounded = []
+        for index in range(count):
+            entry = entries[index]
+            corner = pygame.Vector2(points[index])
+            exit_point = exits[index]
 
-    return lines
+            for step in range(curve_steps):
+                amount = step / curve_steps
+                point = (
+                    entry * (1 - amount) ** 2
+                    + corner * (2 * (1 - amount) * amount)
+                    + exit_point * amount ** 2
+                )
+                rounded.append(point)
 
+            next_entry = entries[(index + 1) % count]
+            straight_length = (next_entry - exit_point).length()
+            straight_steps = max(1, math.ceil(straight_length / 34))
+            for step in range(straight_steps):
+                amount = step / straight_steps
+                rounded.append(exit_point + (next_entry - exit_point) * amount)
 
-MISSION_4_RUT_LINES = build_rut_lines(
-    loop_waypoints(TRACK_LEFT, TRACK_TOP, TRACK_RIGHT, TRACK_BOTTOM)
-)
+        return rounded
 
+    @classmethod
+    def _build_rut_lines(cls, centerline, tire_spacing=52, sample_spacing=34, seed=404):
+        """Build two slightly uneven tire ruts along a closed racing line."""
+        centerline = cls._round_track_corners(centerline)
+        rng = random.Random(seed)
+        lines = []
+        count = len(centerline)
+
+        for side in (-1, 1):
+            offset_points = []
+            for index, point in enumerate(centerline):
+                previous = pygame.Vector2(centerline[(index - 1) % count])
+                current = pygame.Vector2(point)
+                following = pygame.Vector2(centerline[(index + 1) % count])
+                incoming = (current - previous).normalize()
+                outgoing = (following - current).normalize()
+                normal_in = pygame.Vector2(-incoming.y, incoming.x)
+                normal_out = pygame.Vector2(-outgoing.y, outgoing.x)
+                bisector = normal_in + normal_out
+                if bisector.length_squared() == 0:
+                    bisector = normal_out
+                else:
+                    bisector = bisector.normalize()
+                scale = tire_spacing / max(0.35, abs(bisector.dot(normal_out)))
+                offset_points.append(current + bisector * scale * side)
+
+            sampled = []
+            for index, start in enumerate(offset_points):
+                end = offset_points[(index + 1) % count]
+                segment = end - start
+                distance = segment.length()
+                steps = max(1, math.ceil(distance / sample_spacing))
+                normal = pygame.Vector2(-segment.y, segment.x).normalize()
+                for step in range(steps):
+                    amount = step / steps
+                    point = start + segment * amount
+                    point += normal * rng.uniform(-4.5, 4.5)
+                    sampled.append((round(point.x), round(point.y)))
+            lines.append(sampled)
+
+        return lines
+
+    def draw_ruts(self, surface, camera):
+        """Draw the ruts on the ground before vehicles and characters."""
+        overlay = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
+        layers = (
+            ((76, 65, 47, 145), 34),
+            ((158, 132, 88, 150), 25),
+            ((83, 72, 52, 115), 7),
+        )
+        for path in self.rut_lines:
+            screen_points = [
+                (round((x - camera.offset.x) * ZOOM),
+                 round((y - camera.offset.y) * ZOOM))
+                for x, y in path
+            ]
+            for color, world_width in layers:
+                width = max(1, round(world_width * ZOOM))
+                pygame.draw.lines(overlay, color, True, screen_points, width)
+                radius = max(1, width // 2)
+                for point in screen_points:
+                    pygame.draw.circle(overlay, color, point, radius)
+
+        surface.blit(overlay, (0, 0))
 
 class DayNightCycle:
     """A simple 24-hour clock with a smooth ambient color overlay."""
@@ -201,7 +232,6 @@ class DayNightCycle:
         box = pygame.Rect(SCREEN_WIDTH - 112, 18, 94, 38)
         pygame.draw.rect(screen, (20, 20, 25), box, border_radius=6)
         screen.blit(label, label.get_rect(center=box.center))
-
 
 class WeatherSystem:
     """Occasional rainstorms and thick fog during the morning hours."""
@@ -356,7 +386,8 @@ class WeatherSystem:
         screen.blit(self.rain_layer, (0, 0))
 
 class World:
-    def __init__(self):
+    def __init__(self, revenge_track):
+        self.revenge_track = revenge_track
         self.surface = pygame.Surface((6000, 4000))
         self.surface.fill(BG_GRASS_COLOR)
 
@@ -393,7 +424,7 @@ class World:
                     not any(check_field.colliderect(field) for field in self.fields)
                     and not any(new_field.colliderect(road) for road in self.roads)
                     and not new_field.colliderect(self.island_rect)
-                    and not new_field.colliderect(TRACK_ZONE)
+                    and not new_field.colliderect(self.revenge_track.zone)
                 ):
                     break
                 
@@ -554,7 +585,7 @@ class World:
                     and not any(tree_rect.colliderect(path) for path in self.paths_to_houses)
                     and not any(tree_rect.inflate(40, 40).colliderect(tree.rect) for tree in self.trees)
                     and not tree_rect.colliderect(self.island_rect)
-                    and not tree_rect.colliderect(TRACK_ZONE)
+                    and not tree_rect.colliderect(self.revenge_track.zone)
                 ):
                     break
                 
@@ -867,7 +898,6 @@ class Tree(pygame.sprite.Sprite):
 
         self.image = image
         self.rect = self.image.get_rect(topleft=pos)
-
 
 class Car(pygame.sprite.Sprite):
     def __init__(
@@ -1201,7 +1231,6 @@ class Car(pygame.sprite.Sprite):
         self.set_rotation(cars, dt)
         self.get_rotation()
 
-
 class SmokeParticle(pygame.sprite.Sprite):
     """A soft dark puff emitted from the tractor's exhaust pipe."""
 
@@ -1256,34 +1285,6 @@ class SmokeParticle(pygame.sprite.Sprite):
         self.refresh_image()
         return True
 
-
-def draw_mission_4_ruts(surface, camera):
-    """Draw the paired, irregular dirt tire marks above the map scenery."""
-    overlay = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
-
-    # A translucent dark edge and dusty center let some grass show through,
-    # while the narrow dark groove gives each rut a worn-in look.
-    layers = (
-        ((76, 65, 47, 145), 34),
-        ((158, 132, 88, 150), 25),
-        ((83, 72, 52, 115), 7),
-    )
-    for path in MISSION_4_RUT_LINES:
-        screen_points = [
-            (round((x - camera.offset.x) * ZOOM),
-             round((y - camera.offset.y) * ZOOM))
-            for x, y in path
-        ]
-        for color, world_width in layers:
-            width = max(1, round(world_width * ZOOM))
-            pygame.draw.lines(overlay, color, True, screen_points, width)
-            radius = max(1, width // 2)
-            for point in screen_points:
-                pygame.draw.circle(overlay, color, point, radius)
-
-    surface.blit(overlay, (0, 0))
-
-
 class CameraGroup(pygame.sprite.Group):
     def __init__(self, world):
         super().__init__()
@@ -1328,7 +1329,7 @@ class CameraGroup(pygame.sprite.Group):
         # Draw the ground marks first, then depth-sort every world sprite.
         # The bottom edge is the sprite's ground contact point, so trees
         # overlap players and vehicles correctly as they move past the trunk.
-        draw_mission_4_ruts(self.display_surface, self)
+        self.world.revenge_track.draw_ruts(self.display_surface, self)
 
         sprites = sorted(self.sprites(), key=lambda sprite: sprite.rect.bottom)
         for sprite in sprites:
@@ -1344,7 +1345,6 @@ class CameraGroup(pygame.sprite.Group):
                 - self.offset * ZOOM
             )
             self.display_surface.blit(scaled_image, position)
-
 
 class RaceRival:
     """One AI opponent in a race: its car, its racing line and its lap count."""
@@ -1364,9 +1364,9 @@ class RaceRival:
         self.waypoint_index = 0
         self.lap = 1
 
-
 class Mission:
-    def __init__(self):
+    def __init__(self, revenge_track):
+        self.revenge_track = revenge_track
         self.number = 1
         self.completed = False
         self.completion_time = 0
@@ -1396,8 +1396,6 @@ class Mission:
 
         mission_3_start = pygame.Rect(3400, 3200, 400, 300)
         mission_3_finish = pygame.Rect(4080, 3200, 40, 300)
-        mission_4_start = pygame.Rect(1500, TRACK_BOTTOM - _HALF, 350, TRACK_WIDTH)
-
         self.race_configs = {
             # MISSION 3: two laps around the island roads against the rival.
             3: {
@@ -1434,22 +1432,18 @@ class Mission:
             # track west of the houses. Tune the rivals' speed here.
             4: {
                 "laps": 4,
-                "start": mission_4_start,
-                "finish": mission_4_start,
-                "checkpoints": [
-                    pygame.Rect(TRACK_LEFT - _HALF, 1500, TRACK_WIDTH, 400),       # west side
-                    pygame.Rect(1100, TRACK_TOP - _HALF, 400, TRACK_WIDTH),         # top
-                    pygame.Rect(TRACK_RIGHT - _HALF, 1850, TRACK_WIDTH, 350),       # east side
-                ],
+                "start": self.revenge_track.start,
+                "finish": self.revenge_track.finish,
+                "checkpoints": self.revenge_track.checkpoints,
                 "intro": "MISSION 4: THE REVENGE - Drive to the race start",
                 "win": "YOU BEAT THEM BOTH!",
                 "lose": "THE RIVALS WON THE RACE!",
                 "rivals": [
                     {
                         "car": "rival_car",
-                        "spawn": (1250, TRACK_BOTTOM - LANE_OFFSET),
+                        "spawn": self.revenge_track.inner_spawn,
                         "angle": 90,   # face west along the bottom road
-                        "waypoints": INNER_LANE,
+                        "waypoints": self.revenge_track.inner_lane,
                         "reach": 150,
                         "road_speed": 1000,
                         "acceleration": 800,
@@ -1457,9 +1451,9 @@ class Mission:
                     },
                     {
                         "car": "rival_car_2",
-                        "spawn": (1100, TRACK_BOTTOM + LANE_OFFSET),
+                        "spawn": self.revenge_track.outer_spawn,
                         "angle": 90,
-                        "waypoints": OUTER_LANE,
+                        "waypoints": self.revenge_track.outer_lane,
                         "reach": 150,
                         "road_speed": 950,
                         "acceleration": 780,
@@ -1837,10 +1831,11 @@ font = pygame.font.Font(None, 40)
 day_night = DayNightCycle((SCREEN_WIDTH, SCREEN_HEIGHT))
 
 # GAME SETUP
-world = World()
+revenge_track = RevengeRaceTrack()
+world = World(revenge_track)
 weather = WeatherSystem((SCREEN_WIDTH, SCREEN_HEIGHT), DAY_LENGTH_SECONDS, START_HOUR, world.rect.size)
 camera_group = CameraGroup(world)
-mission = Mission()
+mission = Mission(revenge_track)
 
 for tree in world.trees:
     camera_group.add(tree)
@@ -2123,7 +2118,6 @@ def start_debug_mission(number):
     player.kill()
     camera_target = test_car
 
-
 def draw_debug_menu(surface, selected):
     shade = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
     shade.fill((0, 0, 0, 175))
@@ -2319,18 +2313,18 @@ while True:
     player.update(cars, dt)
     mission.update(player, dt)
 
-    # Fade birdsong out as evening falls, keep it silent overnight, and bring
+    # Fade birdsound out as evening falls, keep it silent overnight, and bring
     # it back gradually at dawn.
     hour = day_night.hour
-    if BIRDSONG_FADE_START_HOUR <= hour < BIRDSONG_SILENT_HOUR:
-        bird_volume = 1 - (hour - BIRDSONG_FADE_START_HOUR) / (
-            BIRDSONG_SILENT_HOUR - BIRDSONG_FADE_START_HOUR
+    if BIRDSOUND_FADE_START_HOUR <= hour < BIRDSOUND_SILENT_HOUR:
+        bird_volume = 1 - (hour - BIRDSOUND_FADE_START_HOUR) / (
+            BIRDSOUND_SILENT_HOUR - BIRDSOUND_FADE_START_HOUR
         )
-    elif hour >= BIRDSONG_SILENT_HOUR or hour < DAWN_SONG_START_HOUR:
+    elif hour >= BIRDSOUND_SILENT_HOUR or hour < BIRDSOUND_START_HOUR:
         bird_volume = 0.0
-    elif DAWN_SONG_START_HOUR <= hour < DAWN_SONG_FULL_HOUR:
-        bird_volume = (hour - DAWN_SONG_START_HOUR) / (
-            DAWN_SONG_FULL_HOUR - DAWN_SONG_START_HOUR
+    elif BIRDSOUND_START_HOUR <= hour < BIRDSOUND_FULL_HOUR:
+        bird_volume = (hour - BIRDSOUND_START_HOUR) / (
+            BIRDSOUND_FULL_HOUR - BIRDSOUND_START_HOUR
         )
     else:
         bird_volume = 1.0
