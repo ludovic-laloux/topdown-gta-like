@@ -1029,7 +1029,8 @@ class Tree(pygame.sprite.Sprite):
 
 class Car(pygame.sprite.Sprite):
     def __init__(
-            self, pos, world, image_path, hitbox_inflate, road_speed, offroad_speed, driver_image_path=None
+            self, pos, world, image_path, hitbox_inflate, road_speed, offroad_speed,
+            driver_image_path=None, wheel_bounds=None, reference_size=None
             ):
         super().__init__()
 
@@ -1046,8 +1047,13 @@ class Car(pygame.sprite.Sprite):
 
         if driver_image_path:
             driver_raw = pygame.image.load(driver_image_path).convert_alpha()
-
             self.driver_image = pygame.transform.smoothscale(driver_raw, (int(w * 0.7), int(h * 0.7)))
+
+        self.wheel_animation = None
+        if wheel_bounds:
+            self.wheel_animation = WheelAnimation(
+                self.normal_image, self.driver_image, wheel_bounds, reference_size
+            )
         
         self.image = self.original_image
         self.rect = self.image.get_rect(center = pos)
@@ -1079,8 +1085,6 @@ class Car(pygame.sprite.Sprite):
 
         self.engine_sound = None
         self.engine_volume = 0
-
-        self.wheel_animation = None
 
         self.world = world
 
@@ -1247,7 +1251,6 @@ class Car(pygame.sprite.Sprite):
         self.image = pygame.transform.rotate(self.original_image,self.angle)
         self.rect = self.image.get_rect(center=self.hitbox.center)
         self.mask = pygame.mask.from_surface(self.image)
-        self.collision_mask = self.build_collision_mask(self.angle)
 
     def accelerate(self, cars, dt):
         if self.check_road():
@@ -1939,11 +1942,31 @@ buggy_driver = "graphics/buggy/buggy_with_player.png"
 tractor = "graphics/tractor/tractor_1.png"
 tractor_driver = "graphics/tractor/tractor_with_player_1.png"
 
+# WHEEL ANIMATION SETUP
+TRACTOR_WHEEL_BOUNDS = [
+    (27, 28, 63, 98),
+    (136, 28, 172, 98),
+    (2, 150, 51, 260),
+    (147, 150, 197, 260),
+]
+TRACTOR_SIZE = (199, 263)
+
+# All buggies share the same sprite layout (157 x 220)
+BUGGY_WHEEL_BOUNDS = [
+    (3, 16, 33, 71),      # front left
+    (124, 16, 154, 71),   # front right
+    (4, 143, 33, 194),    # rear left
+    (124, 143, 153, 194), # rear right
+]
+BUGGY_SIZE = (157, 220)
+
 # VEHICLE SETUP
-tractor_car = Car((5000, 2500), world, tractor, (-100, -100), 300, 300, tractor_driver)
+tractor_car = Car((5000, 2500), world, tractor, (-100, -100), 300, 300, tractor_driver,
+                  TRACTOR_WHEEL_BOUNDS, TRACTOR_SIZE)
 
 cars = [
-    Car((4800, 3570), world, buggy, (-50, -50), 1200, 1200, buggy_driver),
+    Car((4800, 3570), world, buggy, (-50, -50), 1200, 1200, buggy_driver,
+        BUGGY_WHEEL_BOUNDS, BUGGY_SIZE),
     Car((2900, 3300), world, "graphics/circlus_grey.png", (-20, -20), 900, 500),
     tractor_car,
     Car((2900, 1000), world, "graphics/Jeep.png", (-60,-60), 1000, 1000),
@@ -1954,8 +1977,10 @@ cars = [
 ]
 
 # Race rivals wait off the map until their mission starts.
-race_rival_car = Car((-1000, -1000), world, "graphics/buggy/rival_buggy.png", (-50, -50), 900, 600)
-race_rival_car_2 = Car((-1000, -1400), world, RIVAL_2_IMAGE, (-50, -50), 900, 600)
+race_rival_car = Car((-1000, -1000), world, "graphics/buggy/rival_buggy.png", (-50, -50), 900, 600,
+                     wheel_bounds=BUGGY_WHEEL_BOUNDS, reference_size=BUGGY_SIZE)
+race_rival_car_2 = Car((-1000, -1400), world, RIVAL_2_IMAGE, (-50, -50), 900, 600,
+                       wheel_bounds=BUGGY_WHEEL_BOUNDS, reference_size=BUGGY_SIZE)
 cars.append(race_rival_car)
 cars.append(race_rival_car_2)
 mission.rival_car = race_rival_car
@@ -2030,18 +2055,6 @@ world.scaled_surface = pygame.transform.scale(
 
 minimap = Minimap(world)
 
-# WHEEL ANIMATION SETUP
-TRACTOR_WHEEL_BOUNDS = [
-    (27, 28, 63, 98),
-    (136, 28, 172, 98),
-    (2, 150, 51, 260),
-    (147, 150, 197, 260),
-]
-
-tractor_car.wheel_animation = WheelAnimation(
-    tractor_car.normal_image, tractor_car.driver_image,
-    TRACTOR_WHEEL_BOUNDS, reference_size=(199, 263),
-)
 
 # CAMERA SETUP
 for car in cars:
