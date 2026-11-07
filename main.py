@@ -193,7 +193,9 @@ class RevengeRaceTrack:
             pygame.Rect(1100, self.TOP - self.HALF_WIDTH, 400, self.WIDTH),
             pygame.Rect(self.RIGHT - self.HALF_WIDTH, 1850, self.WIDTH, 350),
         ]
+
         self.rut_lines = self._build_rut_lines(self.centerline)
+        self.overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
 
     @staticmethod
     def _loop_waypoints(left, top, right, bottom, lead=300):
@@ -294,7 +296,15 @@ class RevengeRaceTrack:
 
     def draw_ruts(self, surface, camera):
         """Draw the ruts on the ground before vehicles and characters."""
-        overlay = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
+        # Nothing to do when the track is outside the camera view
+        view = pygame.Rect(
+            int(camera.offset.x), int(camera.offset.y),
+            int(surface.get_width() / ZOOM), int(surface.get_height() / ZOOM),
+        )
+        if not view.colliderect(self.zone):
+            return
+
+        self.overlay.fill((0, 0, 0, 0))
         layers = (
             ((76, 65, 47, 145), 34),
             ((158, 132, 88, 150), 25),
@@ -308,12 +318,12 @@ class RevengeRaceTrack:
             ]
             for color, world_width in layers:
                 width = max(1, round(world_width * ZOOM))
-                pygame.draw.lines(overlay, color, True, screen_points, width)
+                pygame.draw.lines(self.overlay, color, True, screen_points, width)
                 radius = max(1, width // 2)
                 for point in screen_points:
-                    pygame.draw.circle(overlay, color, point, radius)
+                    pygame.draw.circle(self.overlay, color, point, radius)
 
-        surface.blit(overlay, (0, 0))
+        surface.blit(self.overlay, (0, 0))
 
 class DayNightCycle:
     """A simple 24-hour clock with a smooth ambient color overlay."""
@@ -1251,6 +1261,7 @@ class Car(pygame.sprite.Sprite):
         self.image = pygame.transform.rotate(self.original_image,self.angle)
         self.rect = self.image.get_rect(center=self.hitbox.center)
         self.mask = pygame.mask.from_surface(self.image)
+        self.collision_mask = self.build_collision_mask(self.angle)
 
     def accelerate(self, cars, dt):
         if self.check_road():
@@ -2099,7 +2110,7 @@ smoke_emitters = [
 
     # Chimney 1 of house 1 (offset measured from the house's top-left corner)
     SmokeEmitter(position=(house_1.left + 122, house_1.top +370), colors=SMOKE_GREY,
-                 interval=0.12, lifetime=(2.5, 3.5), speed=(15, 25), spread=100,
+                 interval=0.12, lifetime=(2.5, 3.5), speed=(30, 50), spread=50,
                  max_radius=8, growth=60),
 
     # Chimney 2 of house 1 (offset measured from the house's top-left corner)
