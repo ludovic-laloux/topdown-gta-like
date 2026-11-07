@@ -23,6 +23,72 @@ MINIMAP_RADIUS = 45
 MINIMAP_MARGIN = 20
 MINIMAP_SCALE = 0.15                 # minimap px per world px (bigger = more zoomed in)
 
+class WheelAnimation:
+    """Fake rolling wheels by scrolling the tread pixels inside given wheel areas."""
+
+    def __init__(self, normal_image, driver_image, wheel_bounds, reference_size,
+                 shifts=(0, 4, 8, 12), frame_time=0.07):
+        self.wheel_bounds = wheel_bounds      # (left, top, right, bottom) in reference-image pixels
+        self.reference_size = reference_size  # size of the image the bounds were measured on
+        self.shifts = shifts
+        self.frame_time = frame_time
+
+        self.normal_frames = self._make_frames(normal_image)
+        self.driver_frames = self._make_frames(driver_image) if driver_image else None
+
+        self.timer = 0.0
+        self.index = 0
+
+    def _make_frames(self, base_image):
+        source = base_image.copy()
+        scale_x = base_image.get_width() / self.reference_size[0]
+        scale_y = base_image.get_height() / self.reference_size[1]
+        frames = []
+
+        for tread_shift in self.shifts:
+            frame = source.copy()
+
+            if tread_shift:
+                shift = max(1, round(tread_shift * scale_y))
+
+                for left, top, right, bottom in self.wheel_bounds:
+                    left = round(left * scale_x)
+                    right = round(right * scale_x)
+                    top = round(top * scale_y)
+                    bottom = round(bottom * scale_y)
+                    height = bottom - top
+
+                    for y in range(top, bottom):
+                        source_y = top + (y - top - shift) % height
+
+                        for x in range(left, right):
+                            original_pixel = source.get_at((x, y))
+                            tread_pixel = source.get_at((x, source_y))
+
+                            if original_pixel.a and tread_pixel.a:
+                                frame.set_at((x, y), (*tread_pixel[:3], original_pixel.a))
+
+            frames.append(frame)
+
+        return frames
+
+    def update(self, speed, dt):
+        if speed == 0:
+            self.timer = 0.0
+            self.index = 0
+            return
+
+        self.timer += dt
+        if self.timer >= self.frame_time:
+            self.timer %= self.frame_time
+            step = 1 if speed > 0 else -1
+            self.index = (self.index + step) % len(self.shifts)
+
+    def get_image(self, driver_visible):
+        if driver_visible and self.driver_frames:
+            return self.driver_frames[self.index]
+        return self.normal_frames[self.index]
+
 class Minimap:
     """Circular minimap that follows a target and points at the mission objective."""
 
@@ -1014,6 +1080,8 @@ class Car(pygame.sprite.Sprite):
         self.engine_sound = None
         self.engine_volume = 0
 
+        self.wheel_animation = None
+
         self.world = world
 
     def set_rotation(self, cars, dt):
@@ -1269,26 +1337,9 @@ class Car(pygame.sprite.Sprite):
     def update(self, cars, dt):
         self.accelerate(cars, dt)
 
-        # Only vehicles with configured animation frames use this path.
-        # Tractor frames animate while moving (forward or backward) and return to frame 1 at rest.
-        if hasattr(self, "animation_frames"):
-            if self.speed != 0:
-                self.animation_timer += dt
-
-                if self.animation_timer >= 0.07:
-                    self.animation_timer %= 0.07
-                    step = 1 if self.speed > 0 else -1
-                    self.animation_index = (self.animation_index + step) % 4
-            else:
-                self.animation_timer = 0
-                self.animation_index = 0
-
-            frames = (
-                self.driver_animation_frames
-                if self.driver_visible
-                else self.animation_frames
-            )
-            self.original_image = frames[self.animation_index]
+        if self.wheel_animation:
+            self.wheel_animation.update(self.speed, dt)
+            self.original_image = self.wheel_animation.get_image(self.driver_visible)
 
         self.set_rotation(cars, dt)
         self.get_rotation()
@@ -1979,56 +2030,18 @@ world.scaled_surface = pygame.transform.scale(
 
 minimap = Minimap(world)
 
-# TRACTOR MOVING WHEELS
-# Create forward-rolling tread phases from the tractor's base image.
-def make_tractor_frames(base_image):
-    source = base_image.copy()
-    scale_x = base_image.get_width() / 199
-    scale_y = base_image.get_height() / 263
-    wheel_bounds = [
-        (27, 28, 63, 98),
-        (136, 28, 172, 98),
-        (2, 150, 51, 260),
-        (147, 150, 197, 260),
-    ]
-    frames = []
+# WHEEL ANIMATION SETUP
+TRACTOR_WHEEL_BOUNDS = [
+    (27, 28, 63, 98),
+    (136, 28, 172, 98),
+    (2, 150, 51, 260),
+    (147, 150, 197, 260),
+]
 
-    for tread_shift in (0, 4, 8, 12):
-        frame = source.copy()
-
-        if tread_shift:
-            shift = max(1, round(tread_shift * scale_y))
-
-            for left, top, right, bottom in wheel_bounds:
-                left = round(left * scale_x)
-                right = round(right * scale_x)
-                top = round(top * scale_y)
-                bottom = round(bottom * scale_y)
-                height = bottom - top
-
-                for y in range(top, bottom):
-                    source_y = top + (y - top - shift) % height
-
-                    for x in range(left, right):
-                        original_pixel = source.get_at((x, y))
-                        tread_pixel = source.get_at((x, source_y))
-
-                        if original_pixel.a and tread_pixel.a:
-                            frame.set_at(
-                                (x, y),
-                                (*tread_pixel[:3], original_pixel.a)
-                            )
-
-        frames.append(frame)
-
-    return frames
-
-
-# Animate only the tractor, with matching frames for both driver states.
-tractor_car.animation_frames = make_tractor_frames(tractor_car.normal_image)
-tractor_car.driver_animation_frames = make_tractor_frames(tractor_car.driver_image)
-tractor_car.animation_timer = 0
-tractor_car.animation_index = 0
+tractor_car.wheel_animation = WheelAnimation(
+    tractor_car.normal_image, tractor_car.driver_image,
+    TRACTOR_WHEEL_BOUNDS, reference_size=(199, 263),
+)
 
 # CAMERA SETUP
 for car in cars:
