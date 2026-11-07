@@ -1347,30 +1347,40 @@ class Car(pygame.sprite.Sprite):
         self.set_rotation(cars, dt)
         self.get_rotation()
 
-class SmokeParticle(pygame.sprite.Sprite):
-    """A soft dark puff emitted from the tractor's exhaust pipe."""
+# Smoke palettes: (outer, middle, core), each as (r, g, b, alpha)
+SMOKE_BLACK = ((42, 40, 38, 140), (20, 19, 18, 195), (8, 8, 8, 225))
+SMOKE_GREY  = ((150, 150, 150, 110), (125, 125, 125, 150), (100, 100, 100, 180))
+SMOKE_WHITE = ((235, 235, 235, 110), (220, 220, 220, 150), (205, 205, 205, 180))
 
-    def __init__(self, position, velocity, lifetime):
+class SmokeParticle(pygame.sprite.Sprite):
+    """A soft puff of smoke that grows, drifts and fades out."""
+
+    def __init__(self, position, velocity, lifetime, colors=SMOKE_BLACK,
+                 start_radius=4, max_radius=14, growth=10):
         super().__init__()
         self.position = pygame.Vector2(position)
         self.velocity = pygame.Vector2(velocity)
         self.lifetime = lifetime
         self.age = 0.0
-        self.image = pygame.Surface((32, 32), pygame.SRCALPHA)
+        self.colors = colors
+        self.start_radius = start_radius
+        self.max_radius = max_radius
+        self.growth = growth
+
+        size = max_radius * 2 + 2
+        self.image = pygame.Surface((size, size), pygame.SRCALPHA)
         self.rect = self.image.get_rect(center=(round(position[0]), round(position[1])))
         self.refresh_image()
 
     def refresh_image(self):
         self.image.fill((0, 0, 0, 0))
-        center = (16, 16)
-        radius = min(14, round(4 + self.age * 10))
-        pygame.draw.circle(self.image, (42, 40, 38, 140), center, radius)
-        pygame.draw.circle(
-            self.image, (20, 19, 18, 195), center, max(1, round(radius * 0.68))
-        )
-        pygame.draw.circle(
-            self.image, (8, 8, 8, 225), center, max(1, round(radius * 0.34))
-        )
+        half = self.image.get_width() // 2
+        center = (half, half)
+        radius = min(self.max_radius, round(self.start_radius + self.age * self.growth))
+        outer, middle, core = self.colors
+        pygame.draw.circle(self.image, outer, center, radius)
+        pygame.draw.circle(self.image, middle, center, max(1, round(radius * 0.68)))
+        pygame.draw.circle(self.image, core, center, max(1, round(radius * 0.34)))
         self.image.set_alpha(round(255 * max(0.0, 1.0 - self.age / self.lifetime)))
         self.rect = self.image.get_rect(
             center=(round(self.position.x), round(self.position.y))
@@ -1400,6 +1410,73 @@ class SmokeParticle(pygame.sprite.Sprite):
         self.velocity *= max(0.0, 1.0 - 0.8 * dt)
         self.refresh_image()
         return True
+
+class SmokeEmitter:
+    """Spawns smoke puffs.
+
+    With an owner (a car), it follows the car, only smokes while the car moves
+    and blows the smoke backwards. Without an owner, it is a fixed source at
+    `position` that smokes all the time in `direction` (e.g. a chimney).
+    """
+
+    def __init__(self, colors=SMOKE_BLACK, owner=None, position=(0, 0), offset=(0, 0),
+                 interval=0.055, lifetime=(0.85, 1.0), speed=(20, 38), spread=10,
+                 start_radius=4, max_radius=14, growth=10, direction=(0, -1)):
+        self.colors = colors
+        self.owner = owner
+        self.position = pygame.Vector2(position)
+        self.offset = pygame.Vector2(offset)      # exhaust position, relative to the owner's center
+        self.interval = interval                  # seconds between puffs
+        self.lifetime = lifetime                  # (min, max)
+        self.speed = speed                        # (min, max)
+        self.spread = spread                      # sideways randomness
+        self.start_radius = start_radius
+        self.max_radius = max_radius
+        self.growth = growth
+        self.direction = pygame.Vector2(direction)
+
+        self.timer = 0.0
+        self.particles = []
+        self.last_center = pygame.Vector2(owner.rect.center) if owner else None
+
+    def _emit(self):
+        sideways = pygame.Vector2(-self.direction.y, self.direction.x)
+        velocity = (
+            self.direction * random.uniform(*self.speed)
+            + sideways * random.uniform(-self.spread, self.spread)
+        )
+        self.particles.append(SmokeParticle(
+            self.position, velocity, random.uniform(*self.lifetime), self.colors,
+            self.start_radius, self.max_radius, self.growth,
+        ))
+
+    def update(self, dt):
+        if self.owner:
+            center = pygame.Vector2(self.owner.rect.center)
+            motion = center - self.last_center
+            self.last_center = center
+            self.position = center + self.offset.rotate(-self.owner.angle)
+            emitting = dt > 0 and motion.length_squared() > 0.25
+            if emitting:
+                self.direction = -motion.normalize()
+        else:
+            emitting = dt > 0
+
+        if emitting:
+            self.timer += dt
+            while self.timer >= self.interval:
+                self.timer -= self.interval
+                self._emit()
+        else:
+            self.timer = 0.0
+
+        for puff in self.particles[:]:
+            if not puff.update(dt):
+                self.particles.remove(puff)
+
+    def draw(self, surface, camera):
+        for puff in self.particles:
+            puff.draw(surface, camera)
 
 class CameraGroup(pygame.sprite.Group):
     def __init__(self, world):
@@ -2013,6 +2090,29 @@ for car in cars:
 # PLAYER SETUP
 player = Player((4350,1000), world)
 
+# SMOKE SETUP
+house_1, house_2 = world.houses
+
+smoke_emitters = [
+    # Tractor exhaust
+    SmokeEmitter(owner=tractor_car, offset=(18, -90), colors=SMOKE_BLACK),
+
+    # Chimney 1 of house 1 (offset measured from the house's top-left corner)
+    SmokeEmitter(position=(house_1.left + 122, house_1.top +370), colors=SMOKE_GREY,
+                 interval=0.12, lifetime=(2.5, 3.5), speed=(15, 25), spread=100,
+                 max_radius=8, growth=60),
+
+    # Chimney 2 of house 1 (offset measured from the house's top-left corner)
+    SmokeEmitter(position=(house_1.left + 215, house_1.top +160), colors=SMOKE_GREY,
+                 interval=0.12, lifetime=(2.5, 3.5), speed=(15, 25), spread=100,
+                 max_radius=15, growth=60),
+
+    # Chimney of house 2
+    SmokeEmitter(position=(house_2.left + 182, house_2.top + 273), colors=SMOKE_WHITE,
+                 interval=0.12, lifetime=(2.5, 3.5), speed=(15, 25), spread=60,
+                 max_radius=10, growth=60),
+]
+
 # Move bales that overlap a car, the player, or the dirt area.
 for bale in world.hay_bales:
     while (
@@ -2061,8 +2161,6 @@ for car in cars:
     camera_group.add(car)
 
 camera_group.add(player)
-tractor_smoke_particles = []
-tractor_smoke_timer = 0.0
 
 camera_target = player
 
@@ -2301,35 +2399,12 @@ while True:
     # UPDATE
     day_night.update(dt)
     weather.update(dt)
-    tractor_previous_center = pygame.Vector2(tractor_car.rect.center)
+    
     for car in cars:
         car.update(cars, dt)
 
-    tractor_motion = pygame.Vector2(tractor_car.rect.center) - tractor_previous_center
-    if dt > 0 and tractor_motion.length_squared() > 0.25:
-        tractor_smoke_timer += dt
-        travel_direction = tractor_motion.normalize()
-        exhaust_offset = pygame.Vector2(18, -90).rotate(-tractor_car.angle)
-        exhaust_position = pygame.Vector2(tractor_car.rect.center) + exhaust_offset
-        sideways = pygame.Vector2(-travel_direction.y, travel_direction.x)
-        while tractor_smoke_timer >= 0.055:
-            tractor_smoke_timer -= 0.055
-            smoke_velocity = (
-                -travel_direction * random.uniform(20, 38)
-                + sideways * random.uniform(-10, 10)
-            )
-            puff = SmokeParticle(
-                exhaust_position,
-                smoke_velocity,
-                random.uniform(0.85, 1.0),
-            )
-            tractor_smoke_particles.append(puff)
-    else:
-        tractor_smoke_timer = 0.0
-
-    for puff in tractor_smoke_particles[:]:
-        if not puff.update(dt):
-            tractor_smoke_particles.remove(puff)
+    for emitter in smoke_emitters:
+        emitter.update(dt)
 
     player.update(cars, dt)
     mission.update(player, dt)
@@ -2389,8 +2464,10 @@ while True:
 
     # DRAW
     camera_group.custom_draw(camera_target)
-    for puff in tractor_smoke_particles:
-        puff.draw(screen, camera_group)
+
+    for emitter in smoke_emitters:
+        emitter.draw(screen, camera_group)
+
     world.draw_overhead_cables(screen, camera_group)
     weather.draw(screen, camera_group)
     day_night.draw(screen)  # tint the world once; keep UI clear
