@@ -2422,6 +2422,84 @@ class Game:
         self.camera_group.add(player)
         player.current_car = None
 
+    def update(self, dt):
+        # Freeze the game while the debug menu is open
+        if self.debug_menu.open:
+            dt = 0
+
+        # The camera follows the car you are driving, or the player on foot
+        self.camera_target = self.player.current_car if self.player.in_car else self.player
+
+        self.day_night.update(dt)
+        self.weather.update(dt)
+
+        for car in self.cars:
+            car.update(self.cars, dt)
+
+        for emitter in self.smoke_emitters:
+            emitter.update(dt)
+
+        self.player.update(self.cars, dt)
+        self.mission.update(self.player, dt)
+
+        self._update_ambient_sound()
+        self._update_engine_sound(dt)
+
+    def _update_ambient_sound(self):
+        """Fade the birds out as evening falls, keep them silent overnight, and
+        bring them back gradually at dawn. The owl does the opposite."""
+        hour = self.day_night.hour
+
+        if BIRDSOUND_FADE_START_HOUR <= hour < BIRDSOUND_SILENT_HOUR:
+            bird_volume = 1 - (hour - BIRDSOUND_FADE_START_HOUR) / (
+                BIRDSOUND_SILENT_HOUR - BIRDSOUND_FADE_START_HOUR
+            )
+        elif hour >= BIRDSOUND_SILENT_HOUR or hour < BIRDSOUND_START_HOUR:
+            bird_volume = 0.0
+        elif BIRDSOUND_START_HOUR <= hour < BIRDSOUND_FULL_HOUR:
+            bird_volume = (hour - BIRDSOUND_START_HOUR) / (
+                BIRDSOUND_FULL_HOUR - BIRDSOUND_START_HOUR
+            )
+        else:
+            bird_volume = 1.0
+        self.bg_birdsounds.set_volume(bird_volume)
+
+        if OWL_FADE_START_HOUR <= hour < OWL_FULL_VOLUME_HOUR:
+            owl_volume = OWL_AMBIENCE_VOLUME * (
+                (hour - OWL_FADE_START_HOUR) / (OWL_FULL_VOLUME_HOUR - OWL_FADE_START_HOUR)
+            )
+        elif hour >= OWL_FULL_VOLUME_HOUR or hour < OWL_FADE_OUT_START_HOUR:
+            owl_volume = OWL_AMBIENCE_VOLUME
+        elif OWL_FADE_OUT_START_HOUR <= hour < OWL_SILENT_HOUR:
+            owl_volume = OWL_AMBIENCE_VOLUME * (
+                1 - (hour - OWL_FADE_OUT_START_HOUR) / (OWL_SILENT_HOUR - OWL_FADE_OUT_START_HOUR)
+            )
+        else:
+            owl_volume = 0.0
+
+        if self.owl_ambience_channel:
+            self.owl_ambience_channel.set_volume(owl_volume)
+
+    def _update_engine_sound(self, dt):
+        racing_cars = self.mission.racing_cars()
+
+        for car in self.cars:
+            target_volume = 0
+
+            if self.player.in_car and self.player.current_car is car:
+                if car.active or car.reverse_active:
+                    target_volume = 0.25  # pedal pressed
+                elif car.speed != 0:
+                    target_volume = 0.1   # coasting
+            elif car in racing_cars and self.mission.race_state == "running" and car.speed != 0:
+                target_volume = 0.12
+
+            target_volume = min(1.0, target_volume * car.engine_gain)
+
+            # smooth fade so it doesn't cut abruptly
+            car.engine_volume += (target_volume - car.engine_volume) * min(1, 8 * dt)
+            car.engine_sound.set_volume(car.engine_volume)
+
 # TEMPORARY: bridge between the Game class and the old loop (removed in the next steps)
 game = Game()
 screen = game.screen
@@ -2432,14 +2510,9 @@ weather = game.weather
 day_night = game.day_night
 camera_group = game.camera_group
 mission = game.mission
-cars = game.cars
-player = game.player
 smoke_emitters = game.smoke_emitters
 minimap = game.minimap
 debug_menu = game.debug_menu
-camera_target = game.camera_target
-bg_birdsounds = game.bg_birdsounds
-owl_ambience_channel = game.owl_ambience_channel
 
 
 # GAME LOOP
@@ -2451,79 +2524,11 @@ while True:
     # EVENTS
     game.handle_events()
 
-    if debug_menu.open:
-        dt = 0
-
-    camera_target = player.current_car if player.in_car else player
-
     # UPDATE
-    day_night.update(dt)
-    weather.update(dt)
-    
-    for car in cars:
-        car.update(cars, dt)
-
-    for emitter in smoke_emitters:
-        emitter.update(dt)
-
-    player.update(cars, dt)
-    mission.update(player, dt)
-
-    # Fade birdsound out as evening falls, keep it silent overnight, and bring
-    # it back gradually at dawn.
-    hour = day_night.hour
-    if BIRDSOUND_FADE_START_HOUR <= hour < BIRDSOUND_SILENT_HOUR:
-        bird_volume = 1 - (hour - BIRDSOUND_FADE_START_HOUR) / (
-            BIRDSOUND_SILENT_HOUR - BIRDSOUND_FADE_START_HOUR
-        )
-    elif hour >= BIRDSOUND_SILENT_HOUR or hour < BIRDSOUND_START_HOUR:
-        bird_volume = 0.0
-    elif BIRDSOUND_START_HOUR <= hour < BIRDSOUND_FULL_HOUR:
-        bird_volume = (hour - BIRDSOUND_START_HOUR) / (
-            BIRDSOUND_FULL_HOUR - BIRDSOUND_START_HOUR
-        )
-    else:
-        bird_volume = 1.0
-    bg_birdsounds.set_volume(bird_volume)
-
-    if OWL_FADE_START_HOUR <= hour < OWL_FULL_VOLUME_HOUR:
-        owl_volume = OWL_AMBIENCE_VOLUME * (
-            (hour - OWL_FADE_START_HOUR) / (OWL_FULL_VOLUME_HOUR - OWL_FADE_START_HOUR)
-        )
-    elif hour >= OWL_FULL_VOLUME_HOUR or hour < OWL_FADE_OUT_START_HOUR:
-        owl_volume = OWL_AMBIENCE_VOLUME
-    elif OWL_FADE_OUT_START_HOUR <= hour < OWL_SILENT_HOUR:
-        owl_volume = OWL_AMBIENCE_VOLUME * (
-            1 - (hour - OWL_FADE_OUT_START_HOUR) / (OWL_SILENT_HOUR - OWL_FADE_OUT_START_HOUR)
-        )
-    else:
-        owl_volume = 0.0
-
-    if owl_ambience_channel:
-        owl_ambience_channel.set_volume(owl_volume)
-
-
-    # ENGINE SOUND
-    racing_cars = mission.racing_cars()
-    for car in cars:
-        target_volume = 0
-
-        if player.in_car and player.current_car is car:
-            if car.active or car.reverse_active:
-                target_volume = 0.25  # pedal pressed
-            elif car.speed != 0:
-                target_volume = 0.1  # coasting
-        elif car in racing_cars and mission.race_state == "running" and car.speed != 0:
-            target_volume = 0.12
-
-        target_volume = min(1.0, target_volume * car.engine_gain)
-
-        # smooth fade so it doesn't cut abruptly
-        car.engine_volume += (target_volume - car.engine_volume) * min(1, 8 * dt)
-        car.engine_sound.set_volume(car.engine_volume)
+    game.update(dt)
 
     # DRAW
-    camera_group.custom_draw(camera_target)
+    camera_group.custom_draw(game.camera_target)
 
     for emitter in smoke_emitters:
         emitter.draw(screen, camera_group)
@@ -2535,7 +2540,7 @@ while True:
 
     mission.draw(screen, camera_group)
     mission.draw_ui(screen, font)
-    minimap.draw(screen, camera_target, mission)
+    minimap.draw(screen, game.camera_target, mission)
 
     debug_menu.draw(screen)
 
