@@ -1934,7 +1934,7 @@ class Mission:
         size = (int(destination.width * ZOOM), int(destination.height * ZOOM))
         pygame.draw.rect(surface, (100, 0, 255), (*position, *size), 5)
 
-    def draw_ui(self, surface):
+    def draw_ui(self, surface, font):
         if self.completed:
             elapsed = pygame.time.get_ticks() - self.completion_time
             if elapsed < 2000:
@@ -2514,7 +2514,7 @@ while True:
     world.draw_street_lamp_light(screen, camera_group, day_night.hour)
 
     mission.draw(screen, camera_group)
-    mission.draw_ui(screen)
+    mission.draw_ui(screen, font)
     minimap.draw(screen, camera_target, mission)
 
     debug_menu.draw(screen)
