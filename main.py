@@ -7,6 +7,7 @@ BG_GRASS_COLOR = (120, 150, 80)
 FIELD_COLOR = (100,140,20)
 ROAD_COLOR = (80,80,70)
 ZOOM = 0.75
+ENTER_DISTANCE = 120
 DAY_LENGTH_SECONDS = 120
 START_HOUR = 13.0
 BIRDSOUND_FADE_START_HOUR = 19.0
@@ -21,27 +22,13 @@ OWL_AMBIENCE_VOLUME = 0.45
 RIVAL_2_IMAGE = "graphics/buggy/rival_buggy_2.png"
 MINIMAP_RADIUS = 45
 MINIMAP_MARGIN = 20
-# minimap px per world px (bigger = more zoomed in)
 MINIMAP_SCALE = 0.15
-# Smoke palettes: (outer, middle, core), each as (r, g, b, alpha)
 SMOKE_BLACK = ((42, 40, 38, 140), (20, 19, 18, 195), (8, 8, 8, 225))
 SMOKE_GREY  = ((150, 150, 150, 110), (125, 125, 125, 150), (100, 100, 100, 180))
 SMOKE_WHITE = ((235, 235, 235, 110), (220, 220, 220, 150), (205, 205, 205, 180))
-# WHEEL ANIMATION SETUP
-TRACTOR_WHEEL_BOUNDS = [
-    (27, 28, 63, 98),
-    (136, 28, 172, 98),
-    (2, 150, 51, 260),
-    (147, 150, 197, 260),
-]
+TRACTOR_WHEEL_BOUNDS = [(27, 28, 63, 98),(136, 28, 172, 98),(2, 150, 51, 260),(147, 150, 197, 260)]
 TRACTOR_SIZE = (199, 263)
-# All buggies share the same sprite layout (157 x 220)
-BUGGY_WHEEL_BOUNDS = [
-    (3, 16, 33, 71),      # front left
-    (124, 16, 154, 71),   # front right
-    (4, 143, 33, 194),    # rear left
-    (124, 143, 153, 194), # rear right
-]
+BUGGY_WHEEL_BOUNDS = [(3, 16, 33, 71),(124, 16, 154, 71),(4, 143, 33, 194),(124, 143, 153, 194)]
 BUGGY_SIZE = (157, 220)
 
 class WheelAnimation:
@@ -2216,7 +2203,7 @@ class Game:
             Car((2700, 1000), world, "graphics/bouboul.png", (-20, -20), 600, 300),
             Car((3430, 1500), world, "graphics/audi_v2.png", (-20, -20), 900, 500),
             Car((3430, 2200), world, "graphics/audi_v3.png", (-20, -20), 900, 500),
-            Car((3430, 2000), world, "graphics/circlus_red.png", (-20, -20), 900, 500),
+            Car((3430, 1800), world, "graphics/circlus_red.png", (-20, -20), 900, 500),
         ]
 
         # Race rivals wait off the map until their mission starts.
@@ -2344,6 +2331,96 @@ class Game:
             self.mission, self.player, self.cars, self.camera_group, self.font
         )
 
+    @staticmethod
+    def quit():
+        pygame.quit()
+        sys.exit()
+
+    def handle_events(self):
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                self.quit()
+
+            # The debug menu gets the first look at every event
+            if self.debug_menu.handle_event(event):
+                continue
+
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                self.quit()
+
+            self._handle_car_controls(event)
+
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_e:
+                if self.player.in_car:
+                    self._exit_car()
+                else:
+                    self._enter_car()
+
+    def _handle_car_controls(self, event):
+        car = self.player.current_car
+        if not car:
+            return
+
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_RIGHT:
+                car.direction += 1
+            if event.key == pygame.K_LEFT:
+                car.direction -= 1
+            if event.key == pygame.K_z:
+                car.active = True
+            if event.key == pygame.K_d:
+                car.reverse_active = True
+
+        elif event.type == pygame.KEYUP:
+            if event.key == pygame.K_RIGHT:
+                car.direction -= 1
+            if event.key == pygame.K_LEFT:
+                car.direction += 1
+            if event.key == pygame.K_z:
+                car.active = False
+            if event.key == pygame.K_d:
+                car.reverse_active = False
+
+    def _enter_car(self):
+        player = self.player
+        closest_car = None
+        closest_distance = ENTER_DISTANCE
+
+        for car in self.cars:
+            if car in self.mission.rival_cars:
+                continue
+            distance = pygame.math.Vector2(player.rect.center).distance_to(car.rect.center)
+            if distance < closest_distance:
+                closest_distance = distance
+                closest_car = car
+
+        if closest_car:
+            player.in_car = True
+            player.current_car = closest_car
+            closest_car.set_driver(True)
+            player.kill()
+
+    def _exit_car(self):
+        player = self.player
+        car = player.current_car
+        spot = player.find_exit_spot(car, self.cars)
+
+        # if there is no free space, the player simply stays in the car
+        if spot is None:
+            return
+
+        player.in_car = False
+        car.set_driver(False)
+        car.direction = 0
+        car.active = False
+        car.reverse_active = False
+
+        player.hitbox = spot
+        player.pos = pygame.Vector2(spot.topleft)
+        player.rect.midbottom = player.hitbox.midbottom
+
+        self.camera_group.add(player)
+        player.current_car = None
 
 # TEMPORARY: bridge between the Game class and the old loop (removed in the next steps)
 game = Game()
@@ -2371,96 +2448,8 @@ while True:
     # DT
     dt = clock.tick() / 1000
 
-
     # EVENTS
-    for event in pygame.event.get():
-
-        if event.type == pygame.QUIT:
-            pygame.quit()
-            sys.exit()
-
-        if debug_menu.handle_event(event):
-            continue
-
-        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-            pygame.quit()
-            sys.exit()
-
-        # CAR CONTROLS
-        if event.type == pygame.KEYDOWN:
-            if player.current_car:
-                car = player.current_car
-
-                if event.key == pygame.K_RIGHT:
-                    car.direction += 1
-                if event.key == pygame.K_LEFT:
-                    car.direction -= 1
-                if event.key == pygame.K_z:
-                    car.active = True
-                if event.key == pygame.K_d:
-                    car.reverse_active = True
-
-        if event.type == pygame.KEYUP:
-            if player.current_car:
-                car = player.current_car
-
-                if event.key == pygame.K_RIGHT:
-                    car.direction -= 1
-                if event.key == pygame.K_LEFT:
-                    car.direction += 1
-                if event.key == pygame.K_z:
-                    car.active = False
-                if event.key == pygame.K_d:
-                    car.reverse_active = False
-
-        # ENTER / EXIT CAR
-        if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_e:
-
-                ENTER_DISTANCE = 120
-
-                # ENTER CAR
-                if not player.in_car:
-                    closest_car = None
-                    closest_distance = ENTER_DISTANCE
-
-                    for car in cars:
-                        if car in mission.rival_cars:
-                            continue
-                        distance = pygame.math.Vector2(
-                            player.rect.center
-                        ).distance_to(car.rect.center)
-
-                        if distance < closest_distance:
-                            closest_distance = distance
-                            closest_car = car
-
-                    if closest_car:
-                        player.in_car = True
-                        player.current_car = closest_car
-                        closest_car.set_driver(True)
-
-                        player.kill()
-
-                # EXIT CAR
-                else:
-                    car = player.current_car
-                    spot = player.find_exit_spot(car, cars)
-
-                    if spot is not None:
-                        player.in_car = False
-                        car.set_driver(False)
-                        car.direction = 0
-                        car.active = False
-                        car.reverse_active = False
-
-                        player.hitbox = spot
-                        player.pos = pygame.Vector2(spot.topleft)
-                        player.rect.midbottom = player.hitbox.midbottom
-
-                        camera_group.add(player)
-                        player.current_car = None
-                    # if there is no free space, the player simply stays in the car
+    game.handle_events()
 
     if debug_menu.open:
         dt = 0
