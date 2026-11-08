@@ -19,9 +19,10 @@ OWL_FADE_OUT_START_HOUR = 5.0
 OWL_SILENT_HOUR = 6.0
 OWL_AMBIENCE_VOLUME = 0.45
 RIVAL_2_IMAGE = "graphics/buggy/rival_buggy_2.png"
-MINIMAP_RADIUS = 45            
+MINIMAP_RADIUS = 45
 MINIMAP_MARGIN = 20
-MINIMAP_SCALE = 0.15                 # minimap px per world px (bigger = more zoomed in)
+# minimap px per world px (bigger = more zoomed in)
+MINIMAP_SCALE = 0.15
 # Smoke palettes: (outer, middle, core), each as (r, g, b, alpha)
 SMOKE_BLACK = ((42, 40, 38, 140), (20, 19, 18, 195), (8, 8, 8, 225))
 SMOKE_GREY  = ((150, 150, 150, 110), (125, 125, 125, 150), (100, 100, 100, 180))
@@ -2143,18 +2144,15 @@ pygame.mouse.set_visible(False)
 clock = pygame.time.Clock() # used for creating dt only
 font = pygame.font.Font(None, 40)
 
-day_night = DayNightCycle((SCREEN_WIDTH, SCREEN_HEIGHT))
 
 # GAME SETUP
 revenge_track = RevengeRaceTrack()
 world = World(revenge_track)
 weather = WeatherSystem((SCREEN_WIDTH, SCREEN_HEIGHT), DAY_LENGTH_SECONDS, START_HOUR, world.rect.size)
+day_night = DayNightCycle((SCREEN_WIDTH, SCREEN_HEIGHT))
 camera_group = CameraGroup(world)
 mission = Mission(revenge_track)
 
-for tree in world.trees:
-    camera_group.add(tree)
-camera_group.add(*world.street_lamp_sprites)
 
 # SOUND SETUP
 bg_birdsounds = pygame.mixer.Sound("sounds/morning_birds.mp3")
@@ -2171,12 +2169,14 @@ tractor_engine_sound.set_volume(0)
 buggy_engine_sound = pygame.mixer.Sound("sounds/buggy_engine_loop.wav")
 buggy_engine_sound.set_volume(0)
 
+
 # VEHICLE GRAPHICS
 buggy = "graphics/buggy/buggy.png"
 buggy_driver = "graphics/buggy/buggy_with_player.png"
 
 tractor = "graphics/tractor/tractor_1.png"
 tractor_driver = "graphics/tractor/tractor_with_player_1.png"
+
 
 # WHEEL ANIMATION SETUP
 TRACTOR_WHEEL_BOUNDS = [
@@ -2195,6 +2195,7 @@ BUGGY_WHEEL_BOUNDS = [
     (124, 143, 153, 194), # rear right
 ]
 BUGGY_SIZE = (157, 220)
+
 
 # VEHICLE SETUP
 tractor_car = Car((5000, 2500), world, tractor, (-100, -100), 300, 300, tractor_driver,
@@ -2246,32 +2247,12 @@ for car in cars:
 
     car.engine_sound.set_volume(0)
 
+
 # PLAYER SETUP
 player = Player((4350,1000), world)
 
-# SMOKE SETUP
-house_1, house_2 = world.houses
 
-smoke_emitters = [
-    # Tractor exhaust
-    SmokeEmitter(owner=tractor_car, offset=(18, -90), colors=SMOKE_BLACK),
-
-    # Chimney 1 of house 1 (offset measured from the house's top-left corner)
-    SmokeEmitter(position=(house_1.left + 122, house_1.top +370), colors=SMOKE_GREY,
-                 interval=0.12, lifetime=(2.5, 3.5), speed=(30, 50), spread=50,
-                 max_radius=8, growth=60),
-
-    # Chimney 2 of house 1 (offset measured from the house's top-left corner)
-    SmokeEmitter(position=(house_1.left + 215, house_1.top +160), colors=SMOKE_GREY,
-                 interval=0.12, lifetime=(2.5, 3.5), speed=(15, 25), spread=100,
-                 max_radius=15, growth=60),
-
-    # Chimney of house 2
-    SmokeEmitter(position=(house_2.left + 182, house_2.top + 273), colors=SMOKE_WHITE,
-                 interval=0.12, lifetime=(2.5, 3.5), speed=(15, 25), spread=60,
-                 max_radius=10, growth=60),
-]
-
+# WORLD FINALIZATION
 # Move bales that overlap a car, the player, or the dirt area.
 for bale in world.hay_bales:
     while (
@@ -2312,18 +2293,45 @@ world.scaled_surface = pygame.transform.scale(
     )
 )
 
+
+# SMOKE SETUP
+house_1, house_2 = world.houses
+
+smoke_emitters = [
+    # Tractor exhaust
+    SmokeEmitter(owner=tractor_car, offset=(18, -90), colors=SMOKE_BLACK),
+
+    # Chimney 1 of house 1 (offset measured from the house's top-left corner)
+    SmokeEmitter(position=(house_1.left + 122, house_1.top +370), colors=SMOKE_GREY,
+                 interval=0.12, lifetime=(2.5, 3.5), speed=(30, 50), spread=50,
+                 max_radius=8, growth=60),
+
+    # Chimney 2 of house 1 (offset measured from the house's top-left corner)
+    SmokeEmitter(position=(house_1.left + 215, house_1.top +160), colors=SMOKE_GREY,
+                 interval=0.12, lifetime=(2.5, 3.5), speed=(15, 25), spread=100,
+                 max_radius=15, growth=60),
+
+    # Chimney of house 2
+    SmokeEmitter(position=(house_2.left + 182, house_2.top + 273), colors=SMOKE_WHITE,
+                 interval=0.12, lifetime=(2.5, 3.5), speed=(15, 25), spread=60,
+                 max_radius=10, growth=60),
+]
+
+
+# UI SETUP
 minimap = Minimap(world)
+debug_menu = DebugMenu(mission, player, cars, camera_group, font)
 
 
 # CAMERA SETUP
+camera_group.add(*world.trees)
+camera_group.add(*world.street_lamp_sprites)
+
 for car in cars:
     camera_group.add(car)
 
 camera_group.add(player)
-
 camera_target = player
-
-debug_menu = DebugMenu(mission, player, cars, camera_group, font)
 
 
 # GAME LOOP
