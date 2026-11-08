@@ -27,7 +27,22 @@ MINIMAP_SCALE = 0.15
 SMOKE_BLACK = ((42, 40, 38, 140), (20, 19, 18, 195), (8, 8, 8, 225))
 SMOKE_GREY  = ((150, 150, 150, 110), (125, 125, 125, 150), (100, 100, 100, 180))
 SMOKE_WHITE = ((235, 235, 235, 110), (220, 220, 220, 150), (205, 205, 205, 180))
-
+# WHEEL ANIMATION SETUP
+TRACTOR_WHEEL_BOUNDS = [
+    (27, 28, 63, 98),
+    (136, 28, 172, 98),
+    (2, 150, 51, 260),
+    (147, 150, 197, 260),
+]
+TRACTOR_SIZE = (199, 263)
+# All buggies share the same sprite layout (157 x 220)
+BUGGY_WHEEL_BOUNDS = [
+    (3, 16, 33, 71),      # front left
+    (124, 16, 154, 71),   # front right
+    (4, 143, 33, 194),    # rear left
+    (124, 143, 153, 194), # rear right
+]
+BUGGY_SIZE = (157, 220)
 
 class WheelAnimation:
     """Fake rolling wheels by scrolling the tread pixels inside given wheel areas."""
@@ -2136,202 +2151,218 @@ class DebugMenu:
         hint = self.font.render("ENTER: start   ESC: close", True, (190, 200, 210))
         surface.blit(hint, (panel.x + 28, panel.bottom - 45))
 
+class Game:
+    """Owns the window and every object of the game."""
 
-# INIT
-pygame.init()
-screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.NOFRAME)
-pygame.mouse.set_visible(False)
-clock = pygame.time.Clock() # used for creating dt only
-font = pygame.font.Font(None, 40)
+    def __init__(self):
+        pygame.init()
+        self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.NOFRAME)
+        pygame.mouse.set_visible(False)
+        self.clock = pygame.time.Clock()  # used for creating dt only
+        self.font = pygame.font.Font(None, 40)
+
+        self._setup_world()
+        self._setup_sound()
+        self._setup_vehicles()
+        self._setup_player()
+        self._finalize_world()
+        self._setup_smoke()
+        self._setup_camera()
+
+    def _setup_world(self):
+        self.revenge_track = RevengeRaceTrack()
+        self.world = World(self.revenge_track)
+        self.weather = WeatherSystem(
+            (SCREEN_WIDTH, SCREEN_HEIGHT), DAY_LENGTH_SECONDS, START_HOUR, self.world.rect.size
+        )
+        self.day_night = DayNightCycle((SCREEN_WIDTH, SCREEN_HEIGHT))
+        self.camera_group = CameraGroup(self.world)
+        self.mission = Mission(self.revenge_track)
+
+    def _setup_sound(self):
+        self.bg_birdsounds = pygame.mixer.Sound("sounds/morning_birds.mp3")
+        self.bg_birdsounds.play(loops=-1)
+        self.bg_birdsounds.set_volume(0)
+
+        owl_ambience = pygame.mixer.Sound("sounds/owl.mp3")
+        self.owl_ambience_channel = owl_ambience.play(loops=-1)
+        if self.owl_ambience_channel:
+            self.owl_ambience_channel.set_volume(0)
+
+        self.tractor_engine_sound = pygame.mixer.Sound("sounds/tractor_engine_loop.wav")
+        self.tractor_engine_sound.set_volume(0)
+
+        self.buggy_engine_sound = pygame.mixer.Sound("sounds/buggy_engine_loop.wav")
+        self.buggy_engine_sound.set_volume(0)
+
+    def _setup_vehicles(self):
+        world = self.world
+        buggy = "graphics/buggy/buggy.png"
+        buggy_driver = "graphics/buggy/buggy_with_player.png"
+        tractor = "graphics/tractor/tractor_1.png"
+        tractor_driver = "graphics/tractor/tractor_with_player_1.png"
+
+        self.tractor_car = Car(
+            (5000, 2500), world, tractor, (-100, -100), 300, 300, tractor_driver,
+            TRACTOR_WHEEL_BOUNDS, TRACTOR_SIZE,
+        )
+
+        self.cars = [
+            Car((4800, 3570), world, buggy, (-50, -50), 1200, 1200, buggy_driver,
+                BUGGY_WHEEL_BOUNDS, BUGGY_SIZE),
+            Car((2900, 3300), world, "graphics/circlus_grey.png", (-20, -20), 900, 500),
+            self.tractor_car,
+            Car((2900, 1000), world, "graphics/Jeep.png", (-60, -60), 1000, 1000),
+            Car((2700, 1000), world, "graphics/bouboul.png", (-20, -20), 600, 300),
+            Car((3430, 1500), world, "graphics/audi_v2.png", (-20, -20), 900, 500),
+            Car((3430, 2200), world, "graphics/audi_v3.png", (-20, -20), 900, 500),
+            Car((3430, 2000), world, "graphics/circlus_red.png", (-20, -20), 900, 500),
+        ]
+
+        # Race rivals wait off the map until their mission starts.
+        race_rival_car = Car(
+            (-1000, -1000), world, "graphics/buggy/rival_buggy.png", (-50, -50), 900, 600,
+            wheel_bounds=BUGGY_WHEEL_BOUNDS, reference_size=BUGGY_SIZE,
+        )
+        race_rival_car_2 = Car(
+            (-1000, -1400), world, RIVAL_2_IMAGE, (-50, -50), 900, 600,
+            wheel_bounds=BUGGY_WHEEL_BOUNDS, reference_size=BUGGY_SIZE,
+        )
+        self.cars.append(race_rival_car)
+        self.cars.append(race_rival_car_2)
+        self.mission.rival_car = race_rival_car
+        self.mission.rival_car_2 = race_rival_car_2
+        self.mission.cars = self.cars
+
+        buggy_car = self.cars[0]
+        buggy_car.angle = -90
+        buggy_car.image, buggy_car.rect, buggy_car.mask, buggy_car.collision_mask = buggy_car.build_image(buggy_car.angle)
+        buggy_car.get_rotation()
+
+        buggy_car.engine_sound = self.buggy_engine_sound
+        self.tractor_car.engine_sound = self.tractor_engine_sound
+
+        buggy_car.engine_gain = 1.0            # buggy
+        self.tractor_car.engine_gain = 1.0     # tractor
+
+        # every car plays its own looping engine sound, so make sure there are enough mixer channels
+        pygame.mixer.set_num_channels(len(self.cars) + 4)
+
+        for car in self.cars:
+            if car.engine_sound is None:
+                car.engine_sound = pygame.mixer.Sound("sounds/car_engine_loop.ogg")
+                car.engine_sound.play(loops=-1)
+                car.engine_gain = 2.5   # regular cars: louder
+            else:
+                car.engine_sound.play(loops=-1)
+
+            car.engine_sound.set_volume(0)
+
+    def _setup_player(self):
+        self.player = Player((4350, 1000), self.world)
+
+    def _finalize_world(self):
+        world = self.world
+
+        # Move bales that overlap a car, the player, or the dirt area.
+        for bale in world.hay_bales:
+            while (
+                any(bale.inflate(10, 10).colliderect(car.rect) for car in self.cars)
+                or bale.inflate(10, 10).colliderect(self.player.hitbox)
+                or bale.colliderect(world.field_dirt_rect)
+            ):
+                while True:
+                    candidate = pygame.Rect(
+                        random.randint(world.wheat_rect.left, world.wheat_rect.right - bale.width),
+                        random.randint(world.wheat_rect.top, world.wheat_rect.bottom - bale.height),
+                        bale.width,
+                        bale.height,
+                    )
+
+                    far_enough = not any(
+                        candidate.inflate(600, 600).colliderect(other)
+                        for other in world.hay_bales
+                        if other is not bale
+                    )
+                    clear_of_cars = not any(
+                        candidate.inflate(10, 10).colliderect(car.rect)
+                        for car in self.cars
+                    )
+                    clear_of_player = not candidate.inflate(10, 10).colliderect(self.player.hitbox)
+                    clear_of_dirt = not candidate.colliderect(world.field_dirt_rect)
+
+                    if far_enough and clear_of_cars and clear_of_player and clear_of_dirt:
+                        bale.topleft = candidate.topleft
+                        break
+
+        # Paint the map once the bales are in their final spots
+        world.draw_map()
+        world.scaled_surface = pygame.transform.scale(
+            world.surface,
+            (
+                int(world.surface.get_width() * ZOOM),
+                int(world.surface.get_height() * ZOOM),
+            ),
+        )
+
+        self.minimap = Minimap(world)
+
+    def _setup_smoke(self):
+        house_1, house_2 = self.world.houses
+
+        self.smoke_emitters = [
+            # Tractor exhaust
+            SmokeEmitter(owner=self.tractor_car, offset=(18, -90), colors=SMOKE_BLACK),
+
+            # Chimney 1 of house 1 (offset measured from the house's top-left corner)
+            SmokeEmitter(position=(house_1.left + 122, house_1.top + 370), colors=SMOKE_GREY,
+                         interval=0.12, lifetime=(2.5, 3.5), speed=(30, 50), spread=50,
+                         max_radius=8, growth=60),
+
+            # Chimney 2 of house 1
+            SmokeEmitter(position=(house_1.left + 215, house_1.top + 160), colors=SMOKE_GREY,
+                         interval=0.12, lifetime=(2.5, 3.5), speed=(15, 25), spread=100,
+                         max_radius=15, growth=60),
+
+            # Chimney of house 2
+            SmokeEmitter(position=(house_2.left + 182, house_2.top + 273), colors=SMOKE_WHITE,
+                         interval=0.12, lifetime=(2.5, 3.5), speed=(15, 25), spread=60,
+                         max_radius=10, growth=60),
+        ]
+
+    def _setup_camera(self):
+        self.camera_group.add(*self.world.trees)
+        self.camera_group.add(*self.world.street_lamp_sprites)
+
+        for car in self.cars:
+            self.camera_group.add(car)
+
+        self.camera_group.add(self.player)
+        self.camera_target = self.player
+
+        self.debug_menu = DebugMenu(
+            self.mission, self.player, self.cars, self.camera_group, self.font
+        )
 
 
-# GAME SETUP
-revenge_track = RevengeRaceTrack()
-world = World(revenge_track)
-weather = WeatherSystem((SCREEN_WIDTH, SCREEN_HEIGHT), DAY_LENGTH_SECONDS, START_HOUR, world.rect.size)
-day_night = DayNightCycle((SCREEN_WIDTH, SCREEN_HEIGHT))
-camera_group = CameraGroup(world)
-mission = Mission(revenge_track)
-
-
-# SOUND SETUP
-bg_birdsounds = pygame.mixer.Sound("sounds/morning_birds.mp3")
-bg_birdsounds.play(loops = -1)
-bg_birdsounds.set_volume(0)
-owl_ambience = pygame.mixer.Sound("sounds/owl.mp3")
-owl_ambience_channel = owl_ambience.play(loops=-1)
-if owl_ambience_channel:
-    owl_ambience_channel.set_volume(0)
-
-tractor_engine_sound = pygame.mixer.Sound("sounds/tractor_engine_loop.wav")
-tractor_engine_sound.set_volume(0)
-
-buggy_engine_sound = pygame.mixer.Sound("sounds/buggy_engine_loop.wav")
-buggy_engine_sound.set_volume(0)
-
-
-# VEHICLE GRAPHICS
-buggy = "graphics/buggy/buggy.png"
-buggy_driver = "graphics/buggy/buggy_with_player.png"
-
-tractor = "graphics/tractor/tractor_1.png"
-tractor_driver = "graphics/tractor/tractor_with_player_1.png"
-
-
-# WHEEL ANIMATION SETUP
-TRACTOR_WHEEL_BOUNDS = [
-    (27, 28, 63, 98),
-    (136, 28, 172, 98),
-    (2, 150, 51, 260),
-    (147, 150, 197, 260),
-]
-TRACTOR_SIZE = (199, 263)
-
-# All buggies share the same sprite layout (157 x 220)
-BUGGY_WHEEL_BOUNDS = [
-    (3, 16, 33, 71),      # front left
-    (124, 16, 154, 71),   # front right
-    (4, 143, 33, 194),    # rear left
-    (124, 143, 153, 194), # rear right
-]
-BUGGY_SIZE = (157, 220)
-
-
-# VEHICLE SETUP
-tractor_car = Car((5000, 2500), world, tractor, (-100, -100), 300, 300, tractor_driver,
-                  TRACTOR_WHEEL_BOUNDS, TRACTOR_SIZE)
-
-cars = [
-    Car((4800, 3570), world, buggy, (-50, -50), 1200, 1200, buggy_driver,
-        BUGGY_WHEEL_BOUNDS, BUGGY_SIZE),
-    Car((2900, 3300), world, "graphics/circlus_grey.png", (-20, -20), 900, 500),
-    tractor_car,
-    Car((2900, 1000), world, "graphics/Jeep.png", (-60,-60), 1000, 1000),
-    Car((2700, 1000), world, "graphics/bouboul.png", (-20, -20), 600, 300),
-    Car((3430, 1500), world, "graphics/audi_v2.png", (-20, -20), 900, 500),
-    Car((3430, 2200), world, "graphics/audi_v3.png", (-20, -20), 900, 500),
-    Car((3430, 2000), world, "graphics/circlus_red.png", (-20, -20), 900, 500)
-]
-
-# Race rivals wait off the map until their mission starts.
-race_rival_car = Car((-1000, -1000), world, "graphics/buggy/rival_buggy.png", (-50, -50), 900, 600,
-                     wheel_bounds=BUGGY_WHEEL_BOUNDS, reference_size=BUGGY_SIZE)
-race_rival_car_2 = Car((-1000, -1400), world, RIVAL_2_IMAGE, (-50, -50), 900, 600,
-                       wheel_bounds=BUGGY_WHEEL_BOUNDS, reference_size=BUGGY_SIZE)
-cars.append(race_rival_car)
-cars.append(race_rival_car_2)
-mission.rival_car = race_rival_car
-mission.rival_car_2 = race_rival_car_2
-mission.cars = cars
-
-cars[0].angle = -90
-cars[0].image, cars[0].rect, cars[0].mask, cars[0].collision_mask = cars[0].build_image(cars[0].angle)
-cars[0].get_rotation()
-
-cars[0].engine_sound = buggy_engine_sound
-tractor_car.engine_sound = tractor_engine_sound
-
-cars[0].engine_gain = 1.0       # buggy
-tractor_car.engine_gain = 1.0   # tractor
-
-# every car plays its own looping engine sound, so make sure there are enough mixer channels
-pygame.mixer.set_num_channels(len(cars) + 4)
-
-for car in cars:
-    if car.engine_sound is None:
-        car.engine_sound = pygame.mixer.Sound("sounds/car_engine_loop.ogg")
-        car.engine_sound.play(loops=-1)
-        car.engine_gain = 2.5   # regular cars: louder
-    else:
-        car.engine_sound.play(loops=-1)
-
-    car.engine_sound.set_volume(0)
-
-
-# PLAYER SETUP
-player = Player((4350,1000), world)
-
-
-# WORLD FINALIZATION
-# Move bales that overlap a car, the player, or the dirt area.
-for bale in world.hay_bales:
-    while (
-        any(bale.inflate(10, 10).colliderect(car.rect) for car in cars)
-        or bale.inflate(10, 10).colliderect(player.hitbox)
-        or bale.colliderect(world.field_dirt_rect)
-    ):
-        while True:
-            candidate = pygame.Rect(
-                random.randint(world.wheat_rect.left, world.wheat_rect.right - bale.width),
-                random.randint(world.wheat_rect.top, world.wheat_rect.bottom - bale.height),
-                bale.width,
-                bale.height,
-            )
-
-            far_enough = not any(
-                candidate.inflate(600, 600).colliderect(other)
-                for other in world.hay_bales
-                if other is not bale
-            )
-            clear_of_cars = not any(
-                candidate.inflate(10, 10).colliderect(car.rect)
-                for car in cars
-            )
-            clear_of_player = not candidate.inflate(10, 10).colliderect(player.hitbox)
-            clear_of_dirt = not candidate.colliderect(world.field_dirt_rect)
-
-            if far_enough and clear_of_cars and clear_of_player and clear_of_dirt:
-                bale.topleft = candidate.topleft
-                break
-
-world.draw_map()
-world.scaled_surface = pygame.transform.scale(
-    world.surface,
-    (
-        int(world.surface.get_width() * ZOOM),
-        int(world.surface.get_height() * ZOOM)
-    )
-)
-
-
-# SMOKE SETUP
-house_1, house_2 = world.houses
-
-smoke_emitters = [
-    # Tractor exhaust
-    SmokeEmitter(owner=tractor_car, offset=(18, -90), colors=SMOKE_BLACK),
-
-    # Chimney 1 of house 1 (offset measured from the house's top-left corner)
-    SmokeEmitter(position=(house_1.left + 122, house_1.top +370), colors=SMOKE_GREY,
-                 interval=0.12, lifetime=(2.5, 3.5), speed=(30, 50), spread=50,
-                 max_radius=8, growth=60),
-
-    # Chimney 2 of house 1 (offset measured from the house's top-left corner)
-    SmokeEmitter(position=(house_1.left + 215, house_1.top +160), colors=SMOKE_GREY,
-                 interval=0.12, lifetime=(2.5, 3.5), speed=(15, 25), spread=100,
-                 max_radius=15, growth=60),
-
-    # Chimney of house 2
-    SmokeEmitter(position=(house_2.left + 182, house_2.top + 273), colors=SMOKE_WHITE,
-                 interval=0.12, lifetime=(2.5, 3.5), speed=(15, 25), spread=60,
-                 max_radius=10, growth=60),
-]
-
-
-# UI SETUP
-minimap = Minimap(world)
-debug_menu = DebugMenu(mission, player, cars, camera_group, font)
-
-
-# CAMERA SETUP
-camera_group.add(*world.trees)
-camera_group.add(*world.street_lamp_sprites)
-
-for car in cars:
-    camera_group.add(car)
-
-camera_group.add(player)
-camera_target = player
+# TEMPORARY: bridge between the Game class and the old loop (removed in the next steps)
+game = Game()
+screen = game.screen
+clock = game.clock
+font = game.font
+world = game.world
+weather = game.weather
+day_night = game.day_night
+camera_group = game.camera_group
+mission = game.mission
+cars = game.cars
+player = game.player
+smoke_emitters = game.smoke_emitters
+minimap = game.minimap
+debug_menu = game.debug_menu
+camera_target = game.camera_target
+bg_birdsounds = game.bg_birdsounds
+owl_ambience_channel = game.owl_ambience_channel
 
 
 # GAME LOOP
