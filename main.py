@@ -2500,48 +2500,33 @@ class Game:
             car.engine_volume += (target_volume - car.engine_volume) * min(1, 8 * dt)
             car.engine_sound.set_volume(car.engine_volume)
 
-# TEMPORARY: bridge between the Game class and the old loop (removed in the next steps)
-game = Game()
-screen = game.screen
-clock = game.clock
-font = game.font
-world = game.world
-weather = game.weather
-day_night = game.day_night
-camera_group = game.camera_group
-mission = game.mission
-smoke_emitters = game.smoke_emitters
-minimap = game.minimap
-debug_menu = game.debug_menu
+    def draw(self):
+        screen = self.screen
 
+        self.camera_group.custom_draw(self.camera_target)
 
-# GAME LOOP
-while True:
+        for emitter in self.smoke_emitters:
+            emitter.draw(screen, self.camera_group)
 
-    # DT
-    dt = clock.tick() / 1000
+        self.world.draw_overhead_cables(screen, self.camera_group)
+        self.weather.draw(screen, self.camera_group)
+        self.day_night.draw(screen)  # tint the world once; keep UI clear
+        self.world.draw_street_lamp_light(screen, self.camera_group, self.day_night.hour)
 
-    # EVENTS
-    game.handle_events()
+        self.mission.draw(screen, self.camera_group)
+        self.mission.draw_ui(screen, self.font)
+        self.minimap.draw(screen, self.camera_target, self.mission)
 
-    # UPDATE
-    game.update(dt)
+        self.debug_menu.draw(screen)
 
-    # DRAW
-    camera_group.custom_draw(game.camera_target)
+        pygame.display.update()
 
-    for emitter in smoke_emitters:
-        emitter.draw(screen, camera_group)
+    def run(self):
+        while True:
+            dt = self.clock.tick() / 1000
+            self.handle_events()
+            self.update(dt)
+            self.draw()
 
-    world.draw_overhead_cables(screen, camera_group)
-    weather.draw(screen, camera_group)
-    day_night.draw(screen)  # tint the world once; keep UI clear
-    world.draw_street_lamp_light(screen, camera_group, day_night.hour)
-
-    mission.draw(screen, camera_group)
-    mission.draw_ui(screen, font)
-    minimap.draw(screen, game.camera_target, mission)
-
-    debug_menu.draw(screen)
-
-    pygame.display.update()
+if __name__ == "__main__":
+    Game().run()
