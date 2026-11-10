@@ -30,6 +30,7 @@ TRACTOR_WHEEL_BOUNDS = [(27, 28, 63, 98),(136, 28, 172, 98),(2, 150, 51, 260),(1
 TRACTOR_SIZE = (199, 263)
 BUGGY_WHEEL_BOUNDS = [(3, 16, 33, 71),(124, 16, 154, 71),(4, 143, 33, 194),(124, 143, 153, 194)]
 BUGGY_SIZE = (157, 220)
+OFFSCREEN = (-1000, -1000)
 
 class WheelAnimation:
     """Fake rolling wheels by scrolling the tread pixels inside given wheel areas."""
@@ -1271,6 +1272,29 @@ class Car(pygame.sprite.Sprite):
         self.mask = pygame.mask.from_surface(self.image)
         self.collision_mask = self.build_collision_mask(self.angle)
 
+    def release_controls(self):
+        """Let go of the pedals and the steering wheel."""
+        self.active = False
+        self.reverse_active = False
+        self.direction = 0
+
+    def stop(self):
+        """Release the controls and bring the car to a dead stop."""
+        self.release_controls()
+        self.speed = 0
+        self.collision_velocity = pygame.Vector2()
+        self.push_remainder = pygame.Vector2()
+
+    def reset(self, position, angle=None, driver=False):
+        """Stop the car and teleport it to `position`, optionally with a new heading."""
+        self.stop()
+        if angle is not None:
+            self.angle = angle
+        self.hitbox.center = position
+        self.pos = pygame.Vector2(self.hitbox.center)
+        self.set_driver(driver)   # also rebuilds image, rect and masks from angle and hitbox
+        self.get_rotation()
+
     def accelerate(self, cars, dt):
         if self.check_road():
             max_speed = self.road_speed
@@ -1722,22 +1746,11 @@ class Mission:
         """Put every rival back on the starting grid, ready for the countdown."""
         for rival in self.rivals:
             car = rival.car
-            car.set_driver(True)
-            car.hitbox.center = rival.spawn
-            car.pos = pygame.Vector2(car.hitbox.center)
-            car.rect.center = car.hitbox.center
-            car.angle = rival.angle
+            car.reset(rival.spawn, rival.angle, driver=True)
             car.rotation_speed = 250
             car.acceleration = rival.acceleration
             car.brake = 1900
             car.road_speed = rival.road_speed
-            car.speed = 0
-            car.direction = 0
-            car.active = False
-            car.reverse_active = False
-            car.push_remainder = pygame.Vector2()
-            car.image, car.rect, car.mask, car.collision_mask = car.build_image(car.angle)
-            car.get_rotation()
             rival.reset()
 
         self.race_state = "waiting"
@@ -1747,24 +1760,14 @@ class Mission:
         self.player_won = player_won
         self.race_result = self.race["win"] if player_won else self.race["lose"]
         self.race_result_timer = 5.0
+
         for rival in self.rivals:
-            rival.car.active = False
-            rival.car.reverse_active = False
-            rival.car.direction = 0
+            rival.car.release_controls()
 
     def _race_won(self):
-        # Leave the Mission 3 rival in place for Mission 4, but clear the grid after Mission 4.
         if self.number == 4:
             for car in self.racing_cars():
-                car.active = False
-                car.reverse_active = False
-                car.direction = 0
-                car.speed = 0
-                car.collision_velocity = pygame.Vector2()
-                car.set_driver(False)
-                car.hitbox.center = (-1000, -1000)
-                car.pos = pygame.Vector2(car.hitbox.center)
-                car.rect.center = car.hitbox.center
+                car.reset(OFFSCREEN)
             self.rivals = []
 
         # Reuse the normal "MISSION COMPLETE!" banner, then the next mission starts.
@@ -1845,10 +1848,7 @@ class Mission:
 
         elif self.race_state == "countdown":
             if player.current_car:
-                player.current_car.active = False
-                player.current_car.reverse_active = False
-                player.current_car.direction = 0
-                player.current_car.speed = 0
+                player.current_car.stop()
             self.race_countdown -= dt
             if self.race_countdown <= 0:
                 self.race_state = "running"
@@ -2000,7 +2000,6 @@ class DebugMenu:
         "Mission 4 - The revenge",
     )
     PLAYER_START = (4350, 1000)
-    OFFSCREEN = (-1000, -1000)
 
     def __init__(self, mission, player, cars, camera_group, font):
         self.mission = mission
@@ -2057,22 +2056,11 @@ class DebugMenu:
 
         # Park every rival off-screen; the selected race will place its opponents.
         for rival_car in mission.rival_cars:
-            rival_car.active = False
-            rival_car.reverse_active = False
-            rival_car.direction = 0
-            rival_car.speed = 0
-            rival_car.collision_velocity = pygame.Vector2()
-            rival_car.set_driver(False)
-            rival_car.hitbox.center = self.OFFSCREEN
-            rival_car.pos = pygame.Vector2(rival_car.hitbox.center)
-            rival_car.rect.center = rival_car.hitbox.center
+            rival_car.reset(OFFSCREEN)
 
         # Return the player to walking mode before positioning for the chosen mission.
         if player.current_car:
-            player.current_car.active = False
-            player.current_car.reverse_active = False
-            player.current_car.direction = 0
-            player.current_car.speed = 0
+            player.current_car.stop()
             player.current_car.set_driver(False)
         player.in_car = False
         player.current_car = None
@@ -2085,15 +2073,6 @@ class DebugMenu:
         if number == 1:
             return
 
-        test_car = self.cars[0]   # the buggy
-        test_car.active = False
-        test_car.reverse_active = False
-        test_car.direction = 0
-        test_car.speed = 0
-        test_car.collision_velocity = pygame.Vector2()
-        test_car.push_remainder = pygame.Vector2()
-        test_car.set_driver(True)
-
         if number == 2:
             spawn = (3050, 3500)
             angle = 90
@@ -2105,11 +2084,8 @@ class DebugMenu:
             spawn = (start.centerx + 50, start.centery)
             angle = 90
 
-        test_car.hitbox.center = spawn
-        test_car.pos = pygame.Vector2(test_car.hitbox.center)
-        test_car.angle = angle
-        test_car.image, test_car.rect, test_car.mask, test_car.collision_mask = test_car.build_image(angle)
-        test_car.get_rotation()
+        test_car = self.cars[0]   # the buggy
+        test_car.reset(spawn, angle, driver=True)
         player.in_car = True
         player.current_car = test_car
         player.kill()
@@ -2411,10 +2387,8 @@ class Game:
 
         player.in_car = False
         car.set_driver(False)
-        car.direction = 0
-        car.active = False
-        car.reverse_active = False
-
+        car.release_controls()
+        
         player.hitbox = spot
         player.pos = pygame.Vector2(spot.topleft)
         player.rect.midbottom = player.hitbox.midbottom
