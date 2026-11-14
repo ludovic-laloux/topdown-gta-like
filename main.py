@@ -626,17 +626,20 @@ class World:
         self.street_lamp_sprites = []
         self.street_lamp_collision_rects = []
         self.street_lamp_collision_masks = []
+
         for ground in self.street_lamp_grounds:
+            # Only each pole's base blocks movement; its raised arm and head do not.
+            hitbox = pygame.Rect((ground[0] - 16, ground[1] - 46, 14, 4))
+            self.street_lamp_collision_rects.append(hitbox)
+            self.street_lamp_collision_masks.append(
+                pygame.mask.Mask(hitbox.size, fill=True)
+            )
+
             sprite = pygame.sprite.Sprite()
             sprite.image = self.street_lamp_image
             sprite.rect = self.street_lamp_image.get_rect(midbottom=ground)
+            sprite.sort_y = hitbox.bottom
             self.street_lamp_sprites.append(sprite)
-
-            # Only each pole's base blocks movement; its raised arm and head do not.
-            self.street_lamp_collision_rects.append(
-                pygame.Rect(ground[0] - 14, ground[1] - 24, 28, 24)
-            )
-            self.street_lamp_collision_masks.append(pygame.mask.Mask((28, 24), fill=True))
 
         self.street_lamp_bulbs_world = [(x - 70, y - 260) for x, y in self.street_lamp_grounds]
         lamp_wire_points = [(x - 10, y - 280) for x, y in self.street_lamp_grounds]
@@ -1562,20 +1565,49 @@ class CameraGroup(pygame.sprite.Group):
         # overlap players and vehicles correctly as they move past the trunk.
         self.world.revenge_track.draw_ruts(self.display_surface, self)
 
-        sprites = sorted(self.sprites(), key=lambda sprite: sprite.rect.bottom)
+        def depth(sprite):
+            if hasattr(sprite, "sort_y"):          # street lamps
+                return sprite.sort_y
+            if hasattr(sprite, "collision_mask"):  # cars: sort by center, not by rear edge
+                return sprite.rect.centery
+            return sprite.rect.bottom              # player, trees, smoke...
+
+        sprites = sorted(self.sprites(), key=depth)
         for sprite in sprites:
-            scaled_image = pygame.transform.scale(
-                sprite.image,
+                    scaled_image = pygame.transform.scale(
+                        sprite.image,
+                        (
+                            int(sprite.image.get_width() * ZOOM),
+                            int(sprite.image.get_height() * ZOOM)
+                        )
+                    )
+                    position = (
+                        pygame.Vector2(sprite.rect.topleft) * ZOOM
+                        - self.offset * ZOOM
+                    )
+                    self.display_surface.blit(scaled_image, position)
+
+        # Seuls le bras et la lampe (tout en haut) passent toujours devant.
+        LAMP_TOP_CUT = 200   # hauteur (px monde) au-dessus du pied où commence la partie haute
+        for lamp in self.world.street_lamp_sprites:
+            cut = lamp.image.get_height() - LAMP_TOP_CUT
+            if cut <= 0:
+                continue
+            top_part = lamp.image.subsurface(
+                pygame.Rect(0, 0, lamp.image.get_width(), cut)
+            )
+            scaled_top = pygame.transform.scale(
+                top_part,
                 (
-                    int(sprite.image.get_width() * ZOOM),
-                    int(sprite.image.get_height() * ZOOM)
-                )
+                    max(1, int(top_part.get_width() * ZOOM)),
+                    max(1, int(top_part.get_height() * ZOOM)),
+                ),
             )
             position = (
-                pygame.Vector2(sprite.rect.topleft) * ZOOM
+                pygame.Vector2(lamp.rect.topleft) * ZOOM
                 - self.offset * ZOOM
             )
-            self.display_surface.blit(scaled_image, position)
+            self.display_surface.blit(scaled_top, position)
 
 class RaceRival:
     """One AI opponent in a race: its car, its racing line and its lap count."""
