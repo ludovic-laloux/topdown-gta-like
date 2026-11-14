@@ -30,8 +30,8 @@ TRACTOR_WHEEL_BOUNDS = [(27, 28, 63, 98),(136, 28, 172, 98),(2, 150, 51, 260),(1
 TRACTOR_SIZE = (199, 263)
 BUGGY_WHEEL_BOUNDS = [(3, 16, 33, 71),(124, 16, 154, 71),(4, 143, 33, 194),(124, 143, 153, 194)]
 BUGGY_SIZE = (157, 220)
-JEEP_WHEEL_BOUNDS = [(5, 25, 33, 90), (167, 25, 195, 90), (5, 182, 33, 248), (167, 182, 195, 248)]
-JEEP_SIZE = (200, 262)
+SUV_WHEEL_BOUNDS = [(5, 25, 33, 90), (167, 25, 195, 90), (5, 182, 33, 248), (167, 182, 195, 248)]
+SUV_SIZE = (200, 262)
 OFFSCREEN = (-1000, -1000)
 
 class WheelAnimation:
@@ -644,7 +644,7 @@ class World:
             self.street_lamp_sprites.append(sprite)
 
         self.street_lamp_bulbs_world = [(x - 70, y - 260) for x, y in self.street_lamp_grounds]
-        lamp_wire_points = [(x - 10, y - 280) for x, y in self.street_lamp_grounds]
+        lamp_wire_points = [(x - 10, y - 255) for x, y in self.street_lamp_grounds]
         self.overhead_cable_spans = list(zip(lamp_wire_points, lamp_wire_points[1:]))
         for house_index, house in enumerate(self.houses):
             nearest_index = min(
@@ -822,7 +822,7 @@ class World:
             if normal_x > 0 or (abs(normal_x) < 0.001 and normal_y < 0):
                 normal_x = -normal_x
                 normal_y = -normal_y
-            sag = min(30.0, max(12.0, length * 0.025))
+            sag = min(55.0, max(20.0, length * 0.05))
             control = (
                 (start[0] + end[0]) / 2 + normal_x * sag,
                 (start[1] + end[1]) / 2 + normal_y * sag,
@@ -2209,8 +2209,8 @@ class Game:
                 BUGGY_WHEEL_BOUNDS, BUGGY_SIZE),
             Car((2900, 3300), world, "graphics/circlus_grey.png", (-20, -20), 900, 500),
             self.tractor_car,
-            Car((2900, 1000), world, "graphics/Jeep.png", (-60, -60), 1000, 1000,
-                wheel_bounds=JEEP_WHEEL_BOUNDS, reference_size=JEEP_SIZE),
+            Car((2900, 1000), world, "graphics/suv.png", (-60, -60), 1000, 1000,
+                wheel_bounds=SUV_WHEEL_BOUNDS, reference_size=SUV_SIZE),
             Car((2700, 1000), world, "graphics/bouboul.png", (-20, -20), 600, 300),
             Car((3430, 1500), world, "graphics/audi_v2.png", (-20, -20), 900, 500),
             Car((3430, 2200), world, "graphics/audi_v3.png", (-20, -20), 900, 500),
