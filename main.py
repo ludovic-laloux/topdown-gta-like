@@ -30,6 +30,8 @@ TRACTOR_WHEEL_BOUNDS = [(27, 28, 63, 98),(136, 28, 172, 98),(2, 150, 51, 260),(1
 TRACTOR_SIZE = (199, 263)
 BUGGY_WHEEL_BOUNDS = [(3, 16, 33, 71),(124, 16, 154, 71),(4, 143, 33, 194),(124, 143, 153, 194)]
 BUGGY_SIZE = (157, 220)
+JEEP_WHEEL_BOUNDS = [(5, 25, 33, 90), (167, 25, 195, 90), (5, 182, 33, 248), (167, 182, 195, 248)]
+JEEP_SIZE = (200, 262)
 OFFSCREEN = (-1000, -1000)
 
 class WheelAnimation:
@@ -2207,7 +2209,8 @@ class Game:
                 BUGGY_WHEEL_BOUNDS, BUGGY_SIZE),
             Car((2900, 3300), world, "graphics/circlus_grey.png", (-20, -20), 900, 500),
             self.tractor_car,
-            Car((2900, 1000), world, "graphics/Jeep.png", (-60, -60), 1000, 1000),
+            Car((2900, 1000), world, "graphics/Jeep.png", (-60, -60), 1000, 1000,
+                wheel_bounds=JEEP_WHEEL_BOUNDS, reference_size=JEEP_SIZE),
             Car((2700, 1000), world, "graphics/bouboul.png", (-20, -20), 600, 300),
             Car((3430, 1500), world, "graphics/audi_v2.png", (-20, -20), 900, 500),
             Car((3430, 2200), world, "graphics/audi_v3.png", (-20, -20), 900, 500),
