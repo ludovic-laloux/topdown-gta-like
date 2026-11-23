@@ -1464,7 +1464,7 @@ class SmokeEmitter:
 
     def __init__(self, colors=SMOKE_BLACK, owner=None, position=(0, 0), offset=(0, 0),
                  interval=0.055, lifetime=(0.85, 1.0), speed=(20, 38), spread=10,
-                 start_radius=4, max_radius=14, growth=10, direction=(0, -1)):
+                 start_radius=4, max_radius=14, growth=10, direction=(3, -1)):
         self.colors = colors
         self.owner = owner
         self.position = pygame.Vector2(position)
@@ -2313,19 +2313,19 @@ class Game:
             SmokeEmitter(owner=self.tractor_car, offset=(18, -90), colors=SMOKE_BLACK),
 
             # Chimney 1 of house 1 (offset measured from the house's top-left corner)
-            SmokeEmitter(position=(house_1.left + 122, house_1.top + 370), colors=SMOKE_GREY,
-                         interval=0.12, lifetime=(2.5, 3.5), speed=(30, 50), spread=50,
-                         max_radius=8, growth=60),
+            SmokeEmitter(position=(house_1.left + 122, house_1.top + 370), colors=SMOKE_WHITE,
+                         interval=0.06, lifetime=(2.5, 3.5), speed=(30, 50), spread=10,
+                         max_radius=15, growth=60),
 
             # Chimney 2 of house 1
-            SmokeEmitter(position=(house_1.left + 215, house_1.top + 160), colors=SMOKE_GREY,
-                         interval=0.12, lifetime=(2.5, 3.5), speed=(15, 25), spread=100,
+            SmokeEmitter(position=(house_1.left + 202, house_1.top + 170), colors=SMOKE_WHITE,
+                         interval=0.06, lifetime=(2.5, 3.5), speed=(30, 50), spread=10,
                          max_radius=15, growth=60),
 
             # Chimney of house 2
             SmokeEmitter(position=(house_2.left + 182, house_2.top + 273), colors=SMOKE_WHITE,
-                         interval=0.12, lifetime=(2.5, 3.5), speed=(15, 25), spread=60,
-                         max_radius=10, growth=60),
+                         interval=0.06, lifetime=(2.5, 3.5), speed=(30, 50), spread=10,
+                         max_radius=15, growth=60),
         ]
 
     def _setup_camera(self):
