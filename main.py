@@ -822,7 +822,7 @@ class World:
             if normal_x > 0 or (abs(normal_x) < 0.001 and normal_y < 0):
                 normal_x = -normal_x
                 normal_y = -normal_y
-            sag = min(55.0, max(20.0, length * 0.05))
+            sag = min(55.0, max(20.0, length * 0.01))
             control = (
                 (start[0] + end[0]) / 2 + normal_x * sag,
                 (start[1] + end[1]) / 2 + normal_y * sag,
