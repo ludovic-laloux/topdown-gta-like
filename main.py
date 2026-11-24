@@ -661,7 +661,16 @@ class World:
 
         self.street_lamp_bulbs_world = [(x - 70, y - 260) for x, y in self.street_lamp_grounds]
         lamp_wire_points = [(x - 10, y - 255) for x, y in self.street_lamp_grounds]
-        self.overhead_cable_spans = list(zip(lamp_wire_points, lamp_wire_points[1:]))
+
+        self.overhead_cable_spans = []
+
+        for start, end in zip(lamp_wire_points, lamp_wire_points[1:]):
+            # Offset the anchors sideways so the three cables don't overlap.
+            for x_offset, sag in [(-10, 7), (-2, 15), (6, 22)]:
+                cable_start = (start[0] + x_offset, start[1])
+                cable_end = (end[0] + x_offset, end[1])
+                self.overhead_cable_spans.append((cable_start, cable_end, sag))
+
         for house_index, house in enumerate(self.houses):
             nearest_index = min(
                 range(len(self.street_lamp_grounds)),
@@ -677,9 +686,11 @@ class World:
             else:
                 # Use the matching upper-right roof-to-wall corner on house one.
                 house_anchor = (house.left + 460, house.top + 40)
-            self.overhead_cable_spans.append(
-                (lamp_anchor, house_anchor)
-            )
+
+            for x_offset, sag in [(-8, 0), (0, 20), (8, 30)]:
+                cable_start = (lamp_anchor[0] + x_offset, lamp_anchor[1])
+                cable_end = (house_anchor[0] + x_offset, house_anchor[1])
+                self.overhead_cable_spans.append((cable_start, cable_end, sag))
 
         horizontal_cone = self._make_cone_glow_surface(
             (round(350 * ZOOM), round(240 * ZOOM)), 145
@@ -828,7 +839,7 @@ class World:
 
     def draw_overhead_cables(self, screen, camera):
         """Render sagging power cables over the world sprites, without collision."""
-        for start, end in self.overhead_cable_spans:
+        for start, end, sag in self.overhead_cable_spans:
             dx = end[0] - start[0]
             dy = end[1] - start[1]
             length = max(1.0, math.hypot(dx, dy))
@@ -838,7 +849,6 @@ class World:
             if normal_x > 0 or (abs(normal_x) < 0.001 and normal_y < 0):
                 normal_x = -normal_x
                 normal_y = -normal_y
-            sag = min(55.0, max(20.0, length * 0.01))
             control = (
                 (start[0] + end[0]) / 2 + normal_x * sag,
                 (start[1] + end[1]) / 2 + normal_y * sag,
@@ -2291,8 +2301,8 @@ class Game:
             Car((2900, 1000), world, "graphics/suv.png", (-60, -60), 1000, 1000,
                 wheel_bounds=SUV_WHEEL_BOUNDS, reference_size=SUV_SIZE),
             Car((2700, 1000), world, "graphics/bouboul.png", (-20, -20), 600, 300),
-            Car((3430, 1500), world, "graphics/audi_v2.png", (-20, -20), 900, 500),
-            Car((3430, 2200), world, "graphics/audi_v3.png", (-20, -20), 900, 500),
+            Car((3430, 1500), world, "graphics/marechal.png", (-20, -20), 900, 500),
+            Car((3430, 2200), world, "graphics/marechal_gt.png", (-20, -20), 1100, 500),
             Car((3430, 1800), world, "graphics/circlus_red.png", (-20, -20), 900, 500),
         ]
 
