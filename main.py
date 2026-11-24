@@ -128,40 +128,57 @@ class Minimap:
         R = self.radius
         cx, cy = self.center
 
-        # Player position on the shrunken world
+        # Player position on the scaled world image
         px = target.rect.centerx * self.scale
         py = target.rect.centery * self.scale
 
-        # Draw the area around the player, then cut it into a circle
+        # Keep the minimap view inside the world.
+        # If the world is smaller than the minimap, center it.
+        world_w, world_h = self.world_image.get_size()
+        view_x = max(R, min(px, world_w - R)) if world_w >= 2 * R else world_w / 2
+        view_y = max(R, min(py, world_h - R)) if world_h >= 2 * R else world_h / 2
+
+        # Draw the clamped world view
         self.view.fill((25, 25, 25, 255))
-        self.view.blit(self.world_image, (R - px, R - py))
+        self.view.blit(self.world_image, (round(R - view_x), round(R - view_y)))
         self.view.blit(self.mask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
         surface.blit(self.view, (cx - R, cy - R))
 
-        self._draw_objective(surface, mission, px, py)
+        player_offset = pygame.Vector2(px - view_x, py - view_y)
+        max_player_dist = R - 8
 
-        # Player is always in the center
-        pygame.draw.circle(surface, (255, 255, 255), (cx, cy), 6)
-        pygame.draw.circle(surface, (220, 30, 30), (cx, cy), 4)
+        if player_offset.length() > max_player_dist:
+            player_offset.scale_to_length(max_player_dist)
 
-        # Border
+        player_pos = (
+        round(cx + player_offset.x),
+        round(cy + player_offset.y),
+        )
+
+        self._draw_objective(surface, mission, view_x, view_y)
+
+        pygame.draw.circle(surface, (255, 255, 255), player_pos, 6)
+        pygame.draw.circle(surface, (220, 30, 30), player_pos, 4)
         pygame.draw.circle(surface, (255, 255, 255), (cx, cy), R, 3)
 
-    def _draw_objective(self, surface, mission, px, py):
+
+    def _draw_objective(self, surface, mission, view_x, view_y):
         destination = mission.current_destination()
         if not destination:
             return
 
         cx, cy = self.center
         offset = pygame.Vector2(
-            destination.centerx * self.scale - px,
-            destination.centery * self.scale - py,
+            destination.centerx * self.scale - view_x,
+            destination.centery * self.scale - view_y,
         )
+
+        # Keep the objective marker inside the minimap circle
         max_dist = self.radius - 8
         if offset.length() > max_dist:
             offset.scale_to_length(max_dist)
 
-        pos = (int(cx + offset.x), int(cy + offset.y))
+        pos = (round(cx + offset.x), round(cy + offset.y))
         pygame.draw.circle(surface, (255, 255, 255), pos, 7)
         pygame.draw.circle(surface, (100, 0, 255), pos, 5)
 
