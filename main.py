@@ -7,7 +7,7 @@ BG_GRASS_COLOR = (120, 150, 80)
 FIELD_COLOR = (100,140,20)
 ROAD_COLOR = (80,80,70)
 ZOOM = 0.75
-ENTER_DISTANCE = 120
+ENTER_DISTANCE = 180
 DAY_LENGTH_SECONDS = 120
 START_HOUR = 13.0
 BIRDSOUND_FADE_START_HOUR = 19.0
@@ -24,7 +24,6 @@ MINIMAP_RADIUS = 45
 MINIMAP_MARGIN = 20
 MINIMAP_SCALE = 0.15
 SMOKE_BLACK = ((42, 40, 38, 140), (20, 19, 18, 195), (8, 8, 8, 225))
-SMOKE_GREY  = ((150, 150, 150, 110), (125, 125, 125, 150), (100, 100, 100, 180))
 SMOKE_WHITE = ((235, 235, 235, 110), (220, 220, 220, 150), (205, 205, 205, 180))
 TRACTOR_WHEEL_BOUNDS = [(27, 28, 63, 98),(136, 28, 172, 98),(2, 150, 51, 260),(147, 150, 197, 260)]
 TRACTOR_SIZE = (199, 263)
@@ -990,14 +989,37 @@ class Player(pygame.sprite.Sprite):
         return False
 
     def find_exit_spot(self, car, cars):
-        # right, left, below, above, then the four corners
-        directions = ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, 1), (1, -1), (-1, -1))
+        directions = [
+            (1, 0), (-1, 0), (0, 1), (0, -1),
+            (1, 1), (-1, 1), (1, -1), (-1, -1),
+        ]
 
-        for gap in (10, 40, 90, 150):          # closest first
+        forward = car.forward.normalize()
+        side = pygame.Vector2(-forward.y, forward.x)
+
+        directions = [
+            -side, side,       # driver's side first, then passenger side
+            forward, -forward,
+            pygame.Vector2(1, 1), pygame.Vector2(-1, 1),
+            pygame.Vector2(1, -1), pygame.Vector2(-1, -1),
+        ]
+
+        velocity = car.forward * car.speed + car.collision_velocity
+
+        if velocity.length_squared() > 1:
+            velocity = velocity.normalize()
+            # When moving, prefer exiting behind the car's movement
+            directions.sort(key=lambda direction: direction.dot(velocity))
+
+        for gap in (5, 15, 30, 50):
             for dx, dy in directions:
                 test = self.hitbox.copy()
-                test.centerx = car.rect.centerx + dx * (car.rect.width // 2 + test.width // 2 + gap)
-                test.centery = car.rect.centery + dy * (car.rect.height // 2 + test.height // 2 + gap)
+                test.centerx = car.rect.centerx + dx * (
+                    car.rect.width // 2 + test.width // 2 + gap
+                )
+                test.centery = car.rect.centery + dy * (
+                    car.rect.height // 2 + test.height // 2 + gap
+                )
 
                 if not self.is_blocked(test, cars):
                     return test
