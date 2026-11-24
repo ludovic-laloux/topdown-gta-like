@@ -952,8 +952,22 @@ class Player(pygame.sprite.Sprite):
         self.in_car = False
         self.current_car = None
 
+        self.waiting_for_movement_release = True
+
     def input(self):
         keys = pygame.key.get_pressed()
+        movement_keys = (
+            pygame.K_q, pygame.K_a, pygame.K_d,
+            pygame.K_z, pygame.K_w, pygame.K_s,
+        )
+
+        if self.waiting_for_movement_release:
+            self.movement.update(0, 0)
+
+            if not any(keys[key] for key in movement_keys):
+                self.waiting_for_movement_release = False
+
+            return
 
         self.movement.x = 0
         self.movement.y = 0
