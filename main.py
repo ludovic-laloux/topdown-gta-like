@@ -928,6 +928,22 @@ class Player(pygame.sprite.Sprite):
                 frame = pygame.transform.scale(frame, (64, 64))
                 self.frames[direction].append(frame)
 
+        # sprinting player sprite sheet
+        sprint_sheet = pygame.image.load(
+            "graphics/player_sprint.png"
+        ).convert_alpha()
+
+        self.sprint_frames = {"down": [], "up": [], "left": [], "right": []}
+        directions = ["down", "up", "left", "right"]
+
+        for row, direction in enumerate(directions):
+            for col in range(4):
+                frame = sprint_sheet.subsurface(
+                    pygame.Rect(col * 32, row * 32, 32, 32)
+                )
+                frame = pygame.transform.scale(frame, (64, 64))
+                self.sprint_frames[direction].append(frame)
+
         # -------------------------
         # PLAYER STATE
         # -------------------------
@@ -947,6 +963,7 @@ class Player(pygame.sprite.Sprite):
         self.pos = pygame.Vector2(self.hitbox.topleft)
 
         self.speed = 180
+        self.sprinting = False
         self.movement = pygame.Vector2()
 
         self.in_car = False
@@ -968,6 +985,8 @@ class Player(pygame.sprite.Sprite):
                 self.waiting_for_movement_release = False
 
             return
+
+        self.sprinting = keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT]
 
         self.movement.x = 0
         self.movement.y = 0
@@ -1044,8 +1063,10 @@ class Player(pygame.sprite.Sprite):
         if self.movement.length() > 0:
             self.movement = self.movement.normalize()
 
+        move_speed = self.speed * (2.4 if self.sprinting else 1.0)
+
         # Horizontal
-        new_x = self.pos.x + self.movement.x * self.speed * dt
+        new_x = self.pos.x + self.movement.x * move_speed * dt
         candidate = self.hitbox.copy()
         candidate.x = round(new_x)
         if not self.is_blocked(candidate, cars):
@@ -1053,7 +1074,7 @@ class Player(pygame.sprite.Sprite):
             self.hitbox = candidate
 
         # Vertical
-        new_y = self.pos.y + self.movement.y * self.speed * dt
+        new_y = self.pos.y + self.movement.y * move_speed * dt
         candidate = self.hitbox.copy()
         candidate.y = round(new_y)
         if not self.is_blocked(candidate, cars):
@@ -1077,7 +1098,12 @@ class Player(pygame.sprite.Sprite):
             if self.frame_index >= 4:
                 self.frame_index = 0
 
-        self.image = self.frames[self.direction][self.frame_index]
+        active_frames = (
+        self.sprint_frames[self.direction]
+        if self.sprinting and self.movement.length() > 0
+        else self.frames[self.direction]
+)
+        self.image = active_frames[self.frame_index]
 
     def update(self, cars, dt):
         if self.in_car:
