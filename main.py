@@ -32,6 +32,8 @@ BUGGY_SIZE = (157, 220)
 SUV_WHEEL_BOUNDS = [(5, 25, 33, 90), (167, 25, 195, 90), (5, 182, 33, 248), (167, 182, 195, 248)]
 SUV_SIZE = (200, 262)
 OFFSCREEN = (-1000, -1000)
+BUGGY_SPEED = 1200        # your buggy, same on and off road
+RIVAL_BUGGY_SPEED = 1100  # default for the rival buggies
 
 class WheelAnimation:
     """Fake rolling wheels by scrolling the tread pixels inside given wheel areas."""
@@ -623,7 +625,7 @@ class World:
                 ):
                     self.hay_bales.append(new_bale)
                     break
-        
+
         house_1 = pygame.image.load("graphics/house_1.png").convert_alpha()
         house_1 = pygame.transform.scale(house_1, (500, 500))
 
@@ -777,6 +779,7 @@ class World:
             tree = Tree((x, y), self.tree_image)
             self.trees.append(tree)
 
+
     @staticmethod
     def _make_cone_glow_surface(size, max_alpha):
         """Build a soft cone with its source at the right, aimed across the road."""
@@ -902,11 +905,11 @@ class World:
 
         self.fill_tiled(self.field_dirt_rect, dirt_tile)
 
-        for bale in self.hay_bales:
-            self.surface.blit(self.hay_bale_image, bale.topleft)
-
         for road in self.roads:
             pygame.draw.rect(self.surface, ROAD_COLOR, road) 
+
+        for bale in self.hay_bales:
+           self.surface.blit(self.hay_bale_image, bale.topleft)
 
         for house, image in zip(self.houses, self.house_images):
             self.surface.blit(image, house.topleft)
@@ -1717,6 +1720,16 @@ class RaceRival:
     def reset(self):
         self.waypoint_index = 0
         self.lap = 1
+        self.recover_timer = 0.0
+        self.check_timer = 0.0
+        self.check_pos = None
+        # detour state
+        self.detour = None
+        self.detour_timer = 0.0
+        self.detour_side = 1
+        self.stuck_pos = None
+        self.stuck_forward = None
+        self.stuck_count = 0
 
 class Mission:
     def __init__(self, revenge_track):
@@ -1773,9 +1786,10 @@ class Mission:
                         "angle": -90,  # face east along the bottom road
                         "waypoints": [
                             (5350, 3350), (5650, 2800), (5650, 450), (5300, 250),
-                            (3500, 250), (3200, 500), (3200, 3000), (4100, 3350),
+                            (3500, 250), (3150, 450), (3150, 1000), (3150, 2000),
+                            (3150, 2900), (3250, 3380), (4100, 3350),
                         ],
-                        "reach": 320,
+                        "reach": 250,          # was 320, so it doesn't cut the corner so early
                         "road_speed": 900,
                         "acceleration": 750,
                         "corner_scale": 1.0,
@@ -1796,27 +1810,26 @@ class Mission:
                     {
                         "car": "rival_car",
                         "spawn": self.revenge_track.inner_spawn,
-                        "angle": 90,   # face west along the bottom road
+                        "angle": 90,
                         "waypoints": self.revenge_track.inner_lane,
-                        "reach": 150,
-                        "road_speed": 1000,
-                        "acceleration": 800,
-                        "corner_scale": 1.08,
+                        "reach": 220,
+                        "road_speed": 1000,       # was 1150
+                        "acceleration": 600,      # was 1000
+                        "corner_scale": 1.0,      # was 1.2
                     },
                     {
                         "car": "rival_car_2",
                         "spawn": self.revenge_track.outer_spawn,
                         "angle": 90,
                         "waypoints": self.revenge_track.outer_lane,
-                        "reach": 150,
-                        "road_speed": 950,
-                        "acceleration": 780,
-                        "corner_scale": 1.0,
+                        "reach": 220,
+                        "road_speed": 950,        # was 1100
+                        "acceleration": 560,      # was 950
+                        "corner_scale": 0.95,     # was 1.15
                     },
                 ],
-            },
+            }
         }
-
     # ------------------------------------------------------------------
     # helpers
     # ------------------------------------------------------------------
@@ -1870,10 +1883,11 @@ class Mission:
         for rival in self.rivals:
             car = rival.car
             car.reset(rival.spawn, rival.angle, driver=True)
-            car.rotation_speed = 250
+            car.rotation_speed = 300
             car.acceleration = rival.acceleration
             car.brake = 1900
             car.road_speed = rival.road_speed
+            car.offroad_speed = rival.road_speed
             rival.reset()
 
         self.race_state = "waiting"
@@ -1910,17 +1924,90 @@ class Mission:
                 return False
         return True
 
-    def _drive_rival(self, rival):
+    def _pick_detour(self, rival):
+        """Aim for a point beside and beyond the obstacle the rival got stuck on."""
         car = rival.car
+        side_vec = pygame.Vector2(-rival.stuck_forward.y, rival.stuck_forward.x)
+        ahead = 300 + 80 * min(rival.stuck_count, 3)
+        sideways = 220 + 60 * min(rival.stuck_count, 3)
 
-        target = pygame.Vector2(rival.waypoints[rival.waypoint_index])
-        to_target = target - pygame.Vector2(car.rect.center)
-        if to_target.length() < rival.reach:
-            if not self._advance_rival(rival):
-                self._finish_race(False)
+        fallback = None
+        for sign in (rival.detour_side, -rival.detour_side):
+            point = rival.stuck_pos + rival.stuck_forward * ahead + side_vec * sign * sideways
+            test = pygame.Rect(0, 0, 150, 150)
+            test.center = (round(point.x), round(point.y))
+            free = car.world.rect.contains(test) and not any(
+                test.colliderect(obstacle) for obstacle in car.world.obstacles
+            )
+            if free:
+                rival.detour_side = sign
+                return point
+            if fallback is None:
+                fallback = point
+        return fallback
+
+    def _drive_rival(self, rival, dt):
+        car = rival.car
+        center = pygame.Vector2(car.rect.center)
+
+        # Phase 1: back straight out of whatever the car is stuck on
+        if rival.recover_timer > 0:
+            rival.recover_timer -= dt
+            if rival.recover_timer <= 0:
+                # Phase 2 starts: head for a point beside and beyond the obstacle
+                rival.detour = self._pick_detour(rival)
+                rival.detour_timer = 3.0
+                rival.check_pos = None
+                rival.check_timer = 0.0
+            car.active = False
+            car.reverse_active = True
+            car.direction = 0
+            return
+
+        # Every second: did the car actually move at least 60 px?
+        if rival.check_pos is None:
+            rival.check_pos = center
+        rival.check_timer += dt
+        if rival.check_timer >= 1.0:
+            moved = (center - rival.check_pos).length()
+            rival.check_timer = 0.0
+            rival.check_pos = center
+            if moved < 60:
+                rival.stuck_count += 1
+                rival.stuck_pos = center
+                rival.stuck_forward = pygame.Vector2(car.forward)
+                if rival.stuck_count > 1:
+                    rival.detour_side = -rival.detour_side   # try the other side
+                rival.detour = None
+                car.speed = 0
+                rival.recover_timer = 0.9
+                car.active = False
+                car.reverse_active = True
+                car.direction = 0
                 return
+
+        # Phase 2: follow the detour point; otherwise the normal waypoint
+        using_detour = False
+        if rival.detour is not None:
+            rival.detour_timer -= dt
+            if (rival.detour - center).length() < 120 or rival.detour_timer <= 0:
+                rival.detour = None
+            else:
+                using_detour = True
+
+        if using_detour:
+            target = rival.detour
+            to_target = target - center
+        else:
             target = pygame.Vector2(rival.waypoints[rival.waypoint_index])
-            to_target = target - pygame.Vector2(car.rect.center)
+            to_target = target - center
+            if to_target.length() < rival.reach:
+                if not self._advance_rival(rival):
+                    self._finish_race(False)
+                    return
+                rival.stuck_count = 0
+                target = pygame.Vector2(rival.waypoints[rival.waypoint_index])
+                to_target = target - pygame.Vector2(car.rect.center)
 
         desired_angle = math.degrees(math.atan2(-to_target.x, -to_target.y))
         angle_difference = (desired_angle - car.angle + 180) % 360 - 180
@@ -1980,7 +2067,7 @@ class Mission:
 
         elif self.race_state == "running":
             for rival in self.rivals:
-                self._drive_rival(rival)
+                self._drive_rival(rival, dt)
                 if self.race_state != "running":
                     break
 
@@ -2294,7 +2381,7 @@ class Game:
         )
 
         self.cars = [
-            Car((4800, 3570), world, buggy, (-50, -50), 1200, 1200, buggy_driver,
+            Car((4800, 3570), world, buggy, (-50, -50), BUGGY_SPEED, BUGGY_SPEED, buggy_driver,
                 BUGGY_WHEEL_BOUNDS, BUGGY_SIZE),
             Car((2900, 3300), world, "graphics/circlus_grey.png", (-20, -20), 900, 500),
             self.tractor_car,
@@ -2308,11 +2395,13 @@ class Game:
 
         # Race rivals wait off the map until their mission starts.
         race_rival_car = Car(
-            (-1000, -1000), world, "graphics/buggy/rival_buggy.png", (-50, -50), 900, 600,
+            (-1000, -1000), world, "graphics/buggy/rival_buggy.png", (-50, -50),
+            RIVAL_BUGGY_SPEED, RIVAL_BUGGY_SPEED,
             wheel_bounds=BUGGY_WHEEL_BOUNDS, reference_size=BUGGY_SIZE,
         )
         race_rival_car_2 = Car(
-            (-1000, -1400), world, RIVAL_2_IMAGE, (-50, -50), 900, 600,
+            (-1000, -1400), world, RIVAL_2_IMAGE, (-50, -50),
+            RIVAL_BUGGY_SPEED, RIVAL_BUGGY_SPEED,
             wheel_bounds=BUGGY_WHEEL_BOUNDS, reference_size=BUGGY_SIZE,
         )
         self.cars.append(race_rival_car)
