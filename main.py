@@ -384,7 +384,7 @@ class DayNightCycle:
         hours = int(self.hour)
         minutes = int((self.hour - hours) * 60)
         label = self.clock_font.render(f"{hours:02d}:{minutes:02d}", True, (255, 255, 255))
-        box = pygame.Rect(SCREEN_WIDTH - 112, 18, 94, 38)
+        box = pygame.Rect(SCREEN_WIDTH - 112, 560, 94, 38)
         pygame.draw.rect(screen, (20, 20, 25), box, border_radius=6)
         screen.blit(label, label.get_rect(center=box.center))
 
