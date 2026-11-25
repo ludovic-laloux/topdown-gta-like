@@ -21,9 +21,9 @@ OWL_FADE_OUT_START_HOUR = 5.0
 OWL_SILENT_HOUR = 6.0
 OWL_AMBIENCE_VOLUME = 0.45
 RIVAL_2_IMAGE = "graphics/buggy/rival_buggy_2.png"
-MINIMAP_RADIUS = 45
+MINIMAP_RADIUS = 90
 MINIMAP_MARGIN = 20
-MINIMAP_SCALE = 0.15
+MINIMAP_SCALE = 0.05
 SMOKE_BLACK = ((42, 40, 38, 140), (20, 19, 18, 195), (8, 8, 8, 225))
 SMOKE_WHITE = ((235, 235, 235, 110), (220, 220, 220, 150), (205, 205, 205, 180))
 TRACTOR_WHEEL_BOUNDS = [(27, 28, 63, 98),(136, 28, 172, 98),(2, 150, 51, 260),(147, 150, 197, 260)]
@@ -126,7 +126,7 @@ class Minimap:
                 int(self.world.rect.height * self.scale))
         self.world_image = pygame.transform.smoothscale(self.world.surface, size)
 
-    def draw(self, surface, target, mission):
+    def draw(self, surface, target, mission, cars):
         R = self.radius
         cx, cy = self.center
 
@@ -143,6 +143,29 @@ class Minimap:
         # Draw the clamped world view
         self.view.fill((25, 25, 25, 255))
         self.view.blit(self.world_image, (round(R - view_x), round(R - view_y)))
+        for car in cars:
+            # Position of this car relative to the minimap's current view
+            dx = car.rect.centerx * self.scale - view_x
+            dy = car.rect.centery * self.scale - view_y
+
+            # Skip cars outside the visible minimap area
+            if abs(dx) > R or abs(dy) > R:
+                continue
+
+            # Scale the car's current image, including its current rotation
+            image = car.image
+            size = (
+                max(1, round(image.get_width() * self.scale)),
+                max(1, round(image.get_height() * self.scale)),
+            )
+            small_image = pygame.transform.smoothscale(image, size)
+
+            # Draw it centered at its minimap position
+            car_pos = (
+                round(R + dx - size[0] / 2),
+                round(R + dy - size[1] / 2),
+            )
+            self.view.blit(small_image, car_pos)
         self.view.blit(self.mask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
         surface.blit(self.view, (cx - R, cy - R))
 
@@ -403,7 +426,7 @@ class DayNightCycle:
         hours = int(self.hour)
         minutes = int((self.hour - hours) * 60)
         label = self.clock_font.render(f"{hours:02d}:{minutes:02d}", True, (255, 255, 255))
-        box = pygame.Rect(SCREEN_WIDTH - 112, 560, 94, 38)
+        box = pygame.Rect(SCREEN_WIDTH - 112, 25, 94, 38)
         pygame.draw.rect(screen, (20, 20, 25), box, border_radius=6)
         screen.blit(label, label.get_rect(center=box.center))
 
@@ -2387,7 +2410,7 @@ class Game:
         self.cars = [
             Car((4800, 3570), world, buggy, (-50, -50), BUGGY_SPEED, BUGGY_SPEED, buggy_driver,
                 BUGGY_WHEEL_BOUNDS, BUGGY_SIZE),
-            Car((2900, 3300), world, "graphics/circlus_grey.png", (-20, -20), 900, 500),
+            Car((2900, 3300), world, "graphics/circlus_celeste.png", (-20, -20), 900, 500),
             self.tractor_car,
             Car((2900, 1000), world, "graphics/suv.png", (-60, -60), 1000, 1000,
                 wheel_bounds=SUV_WHEEL_BOUNDS, reference_size=SUV_SIZE),
@@ -2720,7 +2743,7 @@ class Game:
 
         self.mission.draw(screen, self.camera_group)
         self.mission.draw_ui(screen, self.font)
-        self.minimap.draw(screen, self.camera_target, self.mission)
+        self.minimap.draw(screen, self.camera_target, self.mission, self.cars)
 
         self.debug_menu.draw(screen)
 
