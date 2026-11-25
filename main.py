@@ -596,13 +596,23 @@ class World:
 
         self.roads = [
                     pygame.Rect(3000, 0, 400, 6800), # rue de thys
-                    pygame.Rect(3400, 100, 6600, 300), # remembrement 1
+                    pygame.Rect(3400, 100, 6600, 300), # remembrement 1/rue hallette
                     pygame.Rect(5500, 0, 300, 3400), # remembrement 2
                     pygame.Rect(3400, 3200, 2400, 300), # remembrement 3
                     pygame.Rect(8000, 0, 600, 10000), # grand route
                     pygame.Rect(3400, 6400, 4600, 400), # rue des combattants
                     pygame.Rect(6800, 8000, 1200, 1200) # bus depot
                 ]
+        self.road_marks = [
+            # left side grand route
+            pygame.Rect(8010, 0, 16, 100),
+            pygame.Rect(8010, 400, 16, 6000),
+            pygame.Rect(8010, 6800, 16, 1650),
+            pygame.Rect(8010, 8750, 16, 1250),
+            # right side grand route
+            pygame.Rect(8574, 0, 16, 100),
+            pygame.Rect(8574, 400, 16, 9600),
+        ]
 
         self.field_dirt_rect = pygame.Rect(4700, 2200, 800, 200)
 
@@ -933,7 +943,81 @@ class World:
         self.fill_tiled(self.field_dirt_rect, dirt_tile)
 
         for road in self.roads:
-            pygame.draw.rect(self.surface, ROAD_COLOR, road) 
+            pygame.draw.rect(self.surface, ROAD_COLOR, road)
+
+        for mark in self.road_marks:
+            pygame.draw.rect(self.surface, (162,162,150), mark)
+        
+        # Draw the road-edge markings first.
+        for mark in self.road_marks:
+            pygame.draw.rect(self.surface, (162, 162, 150), mark)
+
+        # Draw the center dashes before wear so the wear can scuff them too.
+        x_start = 8292
+        x_end = 8308
+        for y in range(0, 11000, 200):
+            pygame.draw.line(self.surface, (162, 162, 150), (x_start, y), (x_end, y), 100)
+
+        # One-pixel tire wear on the six through roads; skip the square bus depot.
+        # Streaks follow each road's long axis and overlap naturally at crossroads.
+        wear = random.Random(17)
+        dark_wear = (34, 33, 30)
+        dusty_wear = (158, 151, 132)
+        grand_road = self.roads[4]
+
+        for road in self.roads[:6]:
+            wear_layer = pygame.Surface(road.size, pygame.SRCALPHA)
+            horizontal = road.width >= road.height
+            streak_count = max(1, (road.width * road.height) // 500)
+
+            for _ in range(streak_count):
+                x = wear.randrange(road.width)
+                y = wear.randrange(road.height)
+                length = wear.randint(8, 100)
+
+                if horizontal:
+                    end_x = min(x + length, road.width - 1)
+                    end_y = max(0, min(road.height - 1, y + wear.randint(-3, 3)))
+                else:
+                    end_x = max(0, min(road.width - 1, x + wear.randint(-3, 3)))
+                    end_y = min(y + length, road.height - 1)
+
+                if wear.random() < 0.78:
+                    base_color = dark_wear
+                    alpha = wear.randint(35, 115)
+                else:
+                    base_color = dusty_wear
+                    alpha = wear.randint(15, 55)
+
+                pygame.draw.line(
+                    wear_layer,
+                    (*base_color, alpha),
+                    (x, y),
+                    (end_x, end_y),
+                    1
+                )
+
+            # Crosswise scuffs break up the Grand Route's painted edge lines.
+            if road is grand_road:
+                for mark in self.road_marks:
+                    x = mark.centerx - road.left
+                    y = mark.top - road.top
+                    end_y = mark.bottom - road.top
+
+                    while y < end_y:
+                        y += wear.randint(35, 110)
+                        if y >= end_y:
+                            break
+
+                        pygame.draw.line(
+                            wear_layer,
+                            (*ROAD_COLOR, wear.randint(90, 180)),
+                            (max(0, x - 8), y),
+                            (min(road.width - 1, x + 8), y + wear.randint(-2, 2)),
+                            1
+                        )
+
+            self.surface.blit(wear_layer, road.topleft)
 
         for bale in self.hay_bales:
            self.surface.blit(self.hay_bale_image, bale.topleft)
