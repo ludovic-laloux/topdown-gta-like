@@ -33,6 +33,9 @@ BUGGY_SIZE = (157, 220)
 SUV_WHEEL_BOUNDS = [(5, 25, 33, 90), (167, 25, 195, 90), (5, 182, 33, 248), (167, 182, 195, 248)]
 SUV_SIZE = (200, 262)
 OFFSCREEN = (-1000, -1000)
+NORTHBOUND_BUS_HOURS = (7, 10, 13, 16, 19, 22)
+SOUTHBOUND_BUS_HOURS = (8, 12, 16, 20)
+BUS_TRAFFIC_SPEED = 400
 BUGGY_SPEED = 1200        # your buggy, same on and off road
 RIVAL_BUGGY_SPEED = 1100  # default for the rival buggies
 
@@ -1629,7 +1632,8 @@ class Car(pygame.sprite.Sprite):
                         break
                 return
 
-        if self.world.rect.contains(new_hitbox):
+        if (self.world.rect.contains(new_hitbox)
+                or getattr(self, "allow_world_exit", False)):
             self.pos = new_pos
             self.hitbox = new_hitbox
             self.rect.center = self.hitbox.center
@@ -2565,6 +2569,31 @@ class Game:
 
         ]
 
+        # Three reusable NPC buses per direction allow slower trips to overlap.
+        self.traffic_buses = {"northbound": [], "southbound": []}
+        for direction in ("northbound", "southbound"):
+            for _ in range(3):
+                bus = Car(
+                    OFFSCREEN, world, "graphics/bus.png", (-20, -20),
+                    BUS_TRAFFIC_SPEED, BUS_TRAFFIC_SPEED,
+                )
+                bus.scheduled_traffic_bus = True
+                bus.traffic_direction = direction
+                bus.traffic_in_service = False
+                bus.allow_world_exit = True
+
+                if direction == "southbound":
+                    bus.angle = 180
+                    bus.image, bus.rect, bus.mask, bus.collision_mask = bus.build_image(bus.angle)
+                    bus.get_rotation()
+
+                self.traffic_buses[direction].append(bus)
+                self.cars.append(bus)
+
+        # Start just before the current clock hour so a departure at START_HOUR
+        # (13:00 by default) is dispatched on the first game update.
+        self._last_bus_schedule_hour = self.day_night.hour - 1e-6
+
         # Race rivals wait off the map until their mission starts.
         race_rival_car = Car(
             (-1000, -1000), world, "graphics/buggy/rival_buggy.png", (-50, -50),
@@ -2753,7 +2782,7 @@ class Game:
         closest_distance = ENTER_DISTANCE
 
         for car in self.cars:
-            if car in self.mission.rival_cars:
+            if car in self.mission.rival_cars or getattr(car, "scheduled_traffic_bus", False):
                 continue
             distance = pygame.math.Vector2(player.rect.center).distance_to(car.rect.center)
             if distance < closest_distance:
@@ -2786,6 +2815,88 @@ class Game:
         self.camera_group.add(player)
         player.current_car = None
 
+    def _traffic_bus_should_yield(self, bus):
+        road = self.world.roads[4]  # Grand Route
+        occupant = self.player.current_car if self.player.in_car else self.player
+        occupant_rect = occupant.hitbox
+
+        # Only yield to the player (on foot or in their car) while they occupy the road.
+        if not occupant_rect.colliderect(road):
+            return False
+
+        relative = pygame.Vector2(occupant_rect.center) - pygame.Vector2(bus.hitbox.center)
+        forward_distance = relative.dot(bus.forward)
+        sideways = abs(relative.dot(pygame.Vector2(-bus.forward.y, bus.forward.x)))
+
+        # Leave enough room to brake before the bus reaches the player.
+        occupant_half_length = occupant_rect.height / 2
+        overlap_distance = bus.original_image.get_height() / 2 + occupant_half_length
+        braking_distance = bus.speed ** 2 / (2 * max(1, bus.friction))
+        stop_distance = overlap_distance + braking_distance + 80
+        if forward_distance < -overlap_distance or forward_distance > stop_distance:
+            return False
+
+        # Treat any position across the road as blocking the bus's path.
+        lane_offset = abs(bus.hitbox.centerx - road.centerx)
+        road_clearance = road.width / 2 + lane_offset + occupant_rect.width / 2
+        return sideways <= road_clearance
+
+    def _dispatch_scheduled_bus(self, direction):
+        bus = next(
+            (candidate for candidate in self.traffic_buses[direction]
+             if not candidate.traffic_in_service),
+            None,
+        )
+        if bus is None:
+            return
+
+        # Keep traffic on the right-hand side in each direction.
+        lane_x = 8450 if direction == "northbound" else 8150
+        angle = 0 if direction == "northbound" else 180
+        half_length = bus.original_image.get_height() // 2
+
+        if direction == "northbound":
+            spawn_y = self.world.rect.bottom + half_length
+        else:
+            spawn_y = self.world.rect.top - half_length
+
+        bus.reset((lane_x, spawn_y), angle=angle)
+        bus.traffic_in_service = True
+        bus.active = True
+
+    def _update_bus_schedule(self):
+        previous = self._last_bus_schedule_hour
+        current = self.day_night.hour
+        if current >= previous:
+            crossed = lambda hour: previous < hour <= current
+        else:  # the in-game clock crossed midnight
+            crossed = lambda hour: hour > previous or hour <= current
+
+        for hour in NORTHBOUND_BUS_HOURS:
+            if crossed(hour):
+                self._dispatch_scheduled_bus("northbound")
+        for hour in SOUTHBOUND_BUS_HOURS:
+            if crossed(hour):
+                self._dispatch_scheduled_bus("southbound")
+
+        self._last_bus_schedule_hour = current
+
+    def _retire_finished_buses(self):
+        for direction, buses in self.traffic_buses.items():
+            for bus in buses:
+                if not bus.traffic_in_service:
+                    continue
+
+                has_exited = (
+                    bus.rect.bottom < self.world.rect.top
+                    if direction == "northbound"
+                    else bus.rect.top > self.world.rect.bottom
+                )
+                if has_exited:
+                    angle = 0 if direction == "northbound" else 180
+                    bus.reset(OFFSCREEN, angle=angle)
+                    bus.traffic_in_service = False
+
     def update(self, dt):
         # Freeze the game while the debug menu is open
         if self.debug_menu.open:
@@ -2795,10 +2906,16 @@ class Game:
         self.camera_target = self.player.current_car if self.player.in_car else self.player
 
         self.day_night.update(dt)
+        self._update_bus_schedule()
         self.weather.update(dt)
 
         for car in self.cars:
+            if getattr(car, "scheduled_traffic_bus", False) and car.traffic_in_service:
+                car.active = not self._traffic_bus_should_yield(car)
+                car.reverse_active = False
+                car.direction = 0
             car.update(self.cars, dt)
+        self._retire_finished_buses()
 
         for emitter in self.smoke_emitters:
             emitter.update(dt)
