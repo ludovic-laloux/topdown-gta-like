@@ -7,7 +7,7 @@ BG_GRASS_COLOR = (120, 150, 80)
 FIELD_COLOR = (100,140,20)
 ROAD_COLOR = (80,80,70)
 ZOOM = 0.75 # normal = 0.75
-PLAYER_SPEED = 180 # normal = 180
+PLAYER_SPEED = 1800 # normal = 180
 ENTER_DISTANCE = 180
 DAY_LENGTH_SECONDS = 120
 START_HOUR = 13.0
@@ -699,10 +699,26 @@ class World:
 
         self.houses = [
             pygame.Rect(2450, 400, 500, 500),
-            pygame.Rect(2480, 2500, 500, 700)
+            pygame.Rect(2480, 2500, 500, 700),
         ]
 
         self.house_images = [house_1, house_2]
+
+        # Sugar refinery
+        self.sugar_refinery_image = pygame.image.load(
+            "graphics/sugar_refinery.png"
+        ).convert_alpha()
+
+        # house_2 is 700 world pixels tall, so 1500 makes the refinery a little over twice as tall.
+        self.sugar_refinery_image = pygame.transform.smoothscale(
+            self.sugar_refinery_image, (1000, 1500)
+        )
+        self.sugar_refinery_pos = (8380, 5000)
+        self.sugar_refinery_rect = self.sugar_refinery_image.get_rect(
+            topleft=self.sugar_refinery_pos
+        )
+        # Keep trees at least 200 world pixels clear of the refinery.
+        self.sugar_refinery_tree_keepout = self.sugar_refinery_rect.inflate(400, 400)
 
         # Lamps run along the same roadside, spaced 600 world pixels apart.
         lamp_image = pygame.image.load("graphics/street_lamp_post.png").convert_alpha()
@@ -792,12 +808,14 @@ class World:
 
         # Obstacles now include houses + hay bales + flower beds
         self.obstacles = (
-            self.houses + self.hay_bales + self.flower_beds
+            self.houses + [self.sugar_refinery_rect]
+            + self.hay_bales + self.flower_beds
             + self.street_lamp_collision_rects
         )
 
         self.obstacle_masks = (
             [pygame.mask.from_surface(image) for image in self.house_images]
+            + [pygame.mask.from_surface(self.sugar_refinery_image)]
             + [pygame.mask.Mask(bale.size, fill=True) for bale in self.hay_bales]
             + [
                 pygame.mask.from_surface(self.flower_bed_triangle_image),
@@ -833,7 +851,8 @@ class World:
                 if (
                     not any(tree_rect.colliderect(field) for field in self.fields)
                     and not any(tree_rect.colliderect(road) for road in self.roads)
-                    and not any(tree_rect.colliderect(obstacle) for obstacle in self.obstacles) 
+                    and not any(tree_rect.colliderect(obstacle) for obstacle in self.obstacles)
+                    and not tree_rect.colliderect(self.sugar_refinery_tree_keepout)
                     and not any(tree_rect.colliderect(path) for path in self.paths_to_houses)
                     and not any(tree_rect.inflate(40, 40).colliderect(tree.rect) for tree in self.trees)
                     and not tree_rect.colliderect(self.island_rect)
@@ -1058,6 +1077,11 @@ class World:
 
         self.surface.blit(self.flower_bed_triangle_image, self.flower_bed_triangle_rect)
         self.surface.blit(self.flower_bed_rect_image, self.flower_bed_rect_rect)
+
+        self.surface.blit(
+            self.sugar_refinery_image,
+            self.sugar_refinery_pos
+        )
 
 class Player(pygame.sprite.Sprite):
     def __init__(self, pos, world):
