@@ -2393,6 +2393,7 @@ class Game:
             Car((3430, 1500), world, "graphics/marechal.png", (-20, -20), 900, 500),
             Car((3430, 2200), world, "graphics/marechal_gt.png", (-20, -20), 1100, 500),
             Car((3430, 1800), world, "graphics/circlus_red.png", (-20, -20), 900, 500),
+            Car((7900, 8500), world, "graphics/bus.png", (-20, -20), 800, 300),
         ]
 
         # Race rivals wait off the map until their mission starts.
