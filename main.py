@@ -561,7 +561,7 @@ class WeatherSystem:
 class World:
     def __init__(self, revenge_track):
         self.revenge_track = revenge_track
-        self.surface = pygame.Surface((6000, 4000))
+        self.surface = pygame.Surface((10000, 10000))
         self.surface.fill(BG_GRASS_COLOR)
 
         self.rect = self.surface.get_rect(topleft = (0, 0))
@@ -571,17 +571,19 @@ class World:
         self.wheat_rect = self.island_rect.inflate(-2 * self.grass_border, -2 * self.grass_border)
 
         self.roads = [
-                    pygame.Rect(3000, 0, 400, 4000),
-                    pygame.Rect(3400, 100, 2400, 300),
-                    pygame.Rect(5500, 0, 300, 3400),
-                    pygame.Rect(3400, 3200, 2400, 300)
+                    pygame.Rect(3000, 0, 400, 6800), # rue de thys
+                    pygame.Rect(3400, 100, 6600, 300), # remembrement 1
+                    pygame.Rect(5500, 0, 300, 3400), # remembrement 2
+                    pygame.Rect(3400, 3200, 2400, 300), # remembrement 3
+                    pygame.Rect(8000, 0, 600, 10000), # grand route
+                    pygame.Rect(3400, 6400, 4600, 400) # rue des combattants
                 ]
 
         self.field_dirt_rect = pygame.Rect(4700, 2200, 800, 200)
 
         self.fields = []
 
-        for i in range(10):
+        for i in range(20):
 
             while True:
                 width = random.randint(600, 1000)
@@ -752,7 +754,7 @@ class World:
 
         self.trees = []
 
-        for i in range(20):
+        for i in range(40):
 
             while True:
                 tree_width = 216
