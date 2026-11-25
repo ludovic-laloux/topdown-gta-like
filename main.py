@@ -6,7 +6,8 @@ SCREEN_HEIGHT = 720
 BG_GRASS_COLOR = (120, 150, 80)
 FIELD_COLOR = (100,140,20)
 ROAD_COLOR = (80,80,70)
-ZOOM = 0.75
+ZOOM = 0.75 # normal = 0.75
+PLAYER_SPEED = 1000 # normal = 180
 ENTER_DISTANCE = 180
 DAY_LENGTH_SECONDS = 120
 START_HOUR = 13.0
@@ -576,7 +577,8 @@ class World:
                     pygame.Rect(5500, 0, 300, 3400), # remembrement 2
                     pygame.Rect(3400, 3200, 2400, 300), # remembrement 3
                     pygame.Rect(8000, 0, 600, 10000), # grand route
-                    pygame.Rect(3400, 6400, 4600, 400) # rue des combattants
+                    pygame.Rect(3400, 6400, 4600, 400), # rue des combattants
+                    pygame.Rect(6800, 8000, 1200, 1200) # bus depot
                 ]
 
         self.field_dirt_rect = pygame.Rect(4700, 2200, 800, 200)
@@ -748,7 +750,7 @@ class World:
             pygame.Rect(2840, 900, 60, 15),
             pygame.Rect(2710, 3200, 60, 200),
             pygame.Rect(2710, 3380, 290, 60)
-        ] 
+        ]
 
         self.tree_image = pygame.image.load("graphics/tree.png").convert_alpha()
 
@@ -977,7 +979,7 @@ class Player(pygame.sprite.Sprite):
 
         self.pos = pygame.Vector2(self.hitbox.topleft)
 
-        self.speed = 180
+        self.speed = PLAYER_SPEED
         self.sprinting = False
         self.movement = pygame.Vector2()
 
@@ -2393,7 +2395,15 @@ class Game:
             Car((3430, 1500), world, "graphics/marechal.png", (-20, -20), 900, 500),
             Car((3430, 2200), world, "graphics/marechal_gt.png", (-20, -20), 1100, 500),
             Car((3430, 1800), world, "graphics/circlus_red.png", (-20, -20), 900, 500),
-            Car((7900, 8500), world, "graphics/bus.png", (-20, -20), 800, 300),
+            Car((7900, 8250), world, "graphics/bus.png", (-20, -20), 800, 300),
+            Car((7600, 8250), world, "graphics/bus.png", (-20, -20), 800, 300),
+            Car((7300, 8250), world, "graphics/bus.png", (-20, -20), 800, 300),
+            Car((7000, 8250), world, "graphics/bus.png", (-20, -20), 800, 300),
+            Car((7900, 8950), world, "graphics/bus.png", (-20, -20), 800, 300), # cars[12]
+            Car((7600, 8950), world, "graphics/bus.png", (-20, -20), 800, 300),
+            Car((7300, 8950), world, "graphics/bus.png", (-20, -20), 800, 300),
+            Car((7000, 8950), world, "graphics/bus.png", (-20, -20), 800, 300),
+
         ]
 
         # Race rivals wait off the map until their mission starts.
@@ -2413,16 +2423,21 @@ class Game:
         self.mission.rival_car_2 = race_rival_car_2
         self.mission.cars = self.cars
 
-        buggy_car = self.cars[0]
-        buggy_car.angle = -90
-        buggy_car.image, buggy_car.rect, buggy_car.mask, buggy_car.collision_mask = buggy_car.build_image(buggy_car.angle)
-        buggy_car.get_rotation()
+        buggy = self.cars[0]
+        buggy.angle = -90
+        buggy.image, buggy.rect, buggy.mask, buggy.collision_mask = buggy.build_image(buggy.angle)
+        buggy.get_rotation()
 
-        buggy_car.engine_sound = self.buggy_engine_sound
+        for bus in self.cars[12:16]:
+            bus.angle = 180
+            bus.image, bus.rect, bus.mask, bus.collision_mask = bus.build_image(bus.angle)
+            bus.get_rotation()
+
+        buggy.engine_sound = self.buggy_engine_sound
         self.tractor_car.engine_sound = self.tractor_engine_sound
 
-        buggy_car.engine_gain = 1.0            # buggy
-        self.tractor_car.engine_gain = 1.0     # tractor
+        buggy.engine_gain = 1.0
+        self.tractor_car.engine_gain = 1.0
 
         # every car plays its own looping engine sound, so make sure there are enough mixer channels
         pygame.mixer.set_num_channels(len(self.cars) + 4)
