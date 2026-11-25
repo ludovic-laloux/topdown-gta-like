@@ -7,7 +7,7 @@ BG_GRASS_COLOR = (120, 150, 80)
 FIELD_COLOR = (100,140,20)
 ROAD_COLOR = (80,80,70)
 ZOOM = 0.75 # normal = 0.75
-PLAYER_SPEED = 1000 # normal = 180
+PLAYER_SPEED = 180 # normal = 180
 ENTER_DISTANCE = 180
 DAY_LENGTH_SECONDS = 120
 START_HOUR = 13.0
@@ -125,6 +125,34 @@ class Minimap:
         size = (int(self.world.rect.width * self.scale),
                 int(self.world.rect.height * self.scale))
         self.world_image = pygame.transform.smoothscale(self.world.surface, size)
+
+        # Add Mission 4's tire-rut loop to the map image once, so the minimap
+        # shows the track whenever that part of the world is in its view.
+        track = getattr(self.world, "revenge_track", None)
+        if track is not None:
+            rut_overlay = pygame.Surface(size, pygame.SRCALPHA)
+            layers = (
+                ((76, 65, 47, 145), 34),
+                ((158, 132, 88, 150), 25),
+                ((83, 72, 52, 115), 7),
+            )
+
+            for path in track.rut_lines:
+                map_points = [
+                    (round(x * self.scale), round(y * self.scale))
+                    for x, y in path
+                ]
+                if len(map_points) < 2:
+                    continue
+
+                for color, world_width in layers:
+                    width = max(1, round(world_width * self.scale))
+                    pygame.draw.lines(rut_overlay, color, True, map_points, width)
+                    radius = max(1, width // 2)
+                    for point in map_points:
+                        pygame.draw.circle(rut_overlay, color, point, radius)
+
+            self.world_image.blit(rut_overlay, (0, 0))
 
     def draw(self, surface, target, mission, cars):
         R = self.radius
