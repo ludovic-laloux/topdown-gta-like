@@ -7,7 +7,7 @@ BG_GRASS_COLOR = (120, 150, 80)
 FIELD_COLOR = (100,140,20)
 ROAD_COLOR = (80,80,70)
 ZOOM = 0.75 # normal = 0.75
-PLAYER_SPEED = 1800 # normal = 180
+PLAYER_SPEED = 180 # normal = 180
 ENTER_DISTANCE = 180
 DAY_LENGTH_SECONDS = 120
 START_HOUR = 13.0
@@ -1184,8 +1184,16 @@ class Player(pygame.sprite.Sprite):
         if not self.world.rect.contains(test_hitbox):
             return True
 
-        # Cars: feet box against the car's real shape
+        # Buses use their solid body hitbox so sprite windows and transparent
+        # pixels cannot let the player walk into or through them.
+        body_rect = self.rect.copy()
+        body_rect.midbottom = test_hitbox.midbottom
         for car in cars:
+            if getattr(car, "is_bus_vehicle", False):
+                if body_rect.colliderect(car.hitbox):
+                    return True
+                continue
+
             if test_hitbox.colliderect(car.rect):
                 offset = (car.rect.x - test_hitbox.x, car.rect.y - test_hitbox.y)
                 if self.feet_mask.overlap(car.mask, offset):
@@ -1238,29 +1246,82 @@ class Player(pygame.sprite.Sprite):
 
         return None
 
+    def _separate_from_overlapping_buses(self, cars):
+        """Push the player just outside any bus if already embedded in one."""
+        for _ in range(2):
+            moved = False
+            body_rect = self.rect.copy()
+            body_rect.midbottom = self.hitbox.midbottom
+
+            for bus in cars:
+                if not getattr(bus, "is_bus_vehicle", False):
+                    continue
+                if not body_rect.colliderect(bus.hitbox):
+                    continue
+
+                offsets = (
+                    (bus.hitbox.left - body_rect.right - 2, 0),
+                    (bus.hitbox.right - body_rect.left + 2, 0),
+                    (0, bus.hitbox.top - body_rect.bottom - 2),
+                    (0, bus.hitbox.bottom - body_rect.top + 2),
+                )
+                valid_positions = []
+                for dx, dy in offsets:
+                    candidate = self.hitbox.copy()
+                    candidate.x += dx
+                    candidate.y += dy
+                    if self.world.rect.contains(candidate) and not self.is_blocked(candidate, cars):
+                        valid_positions.append((dx * dx + dy * dy, candidate))
+
+                if valid_positions:
+                    _, candidate = min(valid_positions, key=lambda item: item[0])
+                    self.hitbox = candidate
+                    self.pos = pygame.Vector2(candidate.topleft)
+                    self.rect.midbottom = candidate.midbottom
+                    body_rect = self.rect.copy()
+                    moved = True
+
+            if not moved:
+                break
+
     def move(self, cars, dt):
+        self._separate_from_overlapping_buses(cars)
+
         if self.movement.length() > 0:
             self.movement = self.movement.normalize()
 
         move_speed = self.speed * (2.4 if self.sprinting else 1.0)
+        axis_moves = (
+            ("x", self.movement.x * move_speed * dt),
+            ("y", self.movement.y * move_speed * dt),
+        )
 
-        # Horizontal
-        new_x = self.pos.x + self.movement.x * move_speed * dt
-        candidate = self.hitbox.copy()
-        candidate.x = round(new_x)
-        if not self.is_blocked(candidate, cars):
-            self.pos.x = new_x
-            self.hitbox = candidate
+        # Check short steps instead of only the frame's final position. This
+        # prevents sprinting through thin collision areas between frames.
+        max_step = 8
+        for axis, distance in axis_moves:
+            steps = max(1, math.ceil(abs(distance) / max_step))
+            step = distance / steps
 
-        # Vertical
-        new_y = self.pos.y + self.movement.y * move_speed * dt
-        candidate = self.hitbox.copy()
-        candidate.y = round(new_y)
-        if not self.is_blocked(candidate, cars):
-            self.pos.y = new_y
-            self.hitbox = candidate
+            for _ in range(steps):
+                candidate = self.hitbox.copy()
+                if axis == "x":
+                    new_value = self.pos.x + step
+                    candidate.x = round(new_value)
+                else:
+                    new_value = self.pos.y + step
+                    candidate.y = round(new_value)
 
-        # Keep the visual sprite aligned with the feet
+                if self.is_blocked(candidate, cars):
+                    break
+
+                if axis == "x":
+                    self.pos.x = new_value
+                else:
+                    self.pos.y = new_value
+                self.hitbox = candidate
+
+        # Keep the visual sprite aligned with the feet.
         self.rect.midbottom = self.hitbox.midbottom
 
     def animate(self, dt):
@@ -2569,6 +2630,10 @@ class Game:
 
         ]
 
+        # Parked buses share the solid body collision used by traffic buses.
+        for bus in self.cars[8:16]:
+            bus.is_bus_vehicle = True
+
         # Three reusable NPC buses per direction allow slower trips to overlap.
         self.traffic_buses = {"northbound": [], "southbound": []}
         for direction in ("northbound", "southbound"):
@@ -2577,6 +2642,7 @@ class Game:
                     OFFSCREEN, world, "graphics/bus.png", (-20, -20),
                     BUS_TRAFFIC_SPEED, BUS_TRAFFIC_SPEED,
                 )
+                bus.is_bus_vehicle = True
                 bus.scheduled_traffic_bus = True
                 bus.traffic_direction = direction
                 bus.traffic_in_service = False
@@ -2782,7 +2848,10 @@ class Game:
         closest_distance = ENTER_DISTANCE
 
         for car in self.cars:
-            if car in self.mission.rival_cars or getattr(car, "scheduled_traffic_bus", False):
+            if car in self.mission.rival_cars:
+                continue
+            if (getattr(car, "scheduled_traffic_bus", False)
+                    and not self.world.rect.contains(car.hitbox)):
                 continue
             distance = pygame.math.Vector2(player.rect.center).distance_to(car.rect.center)
             if distance < closest_distance:
@@ -2790,6 +2859,16 @@ class Game:
                 closest_car = car
 
         if closest_car:
+            if getattr(closest_car, "scheduled_traffic_bus", False):
+                # Transfer this bus out of the NPC pool and leave it under player control.
+                closest_car.release_controls()
+                closest_car.traffic_in_service = False
+                closest_car.allow_world_exit = False
+                pool = self.traffic_buses.get(closest_car.traffic_direction, [])
+                if closest_car in pool:
+                    pool.remove(closest_car)
+                closest_car.scheduled_traffic_bus = False
+
             player.in_car = True
             player.current_car = closest_car
             closest_car.set_driver(True)
@@ -2817,8 +2896,11 @@ class Game:
 
     def _traffic_bus_should_yield(self, bus):
         road = self.world.roads[4]  # Grand Route
-        occupant = self.player.current_car if self.player.in_car else self.player
-        occupant_rect = occupant.hitbox
+        if self.player.in_car:
+            occupant_rect = self.player.current_car.hitbox
+        else:
+            occupant_rect = self.player.rect.copy()
+            occupant_rect.midbottom = self.player.hitbox.midbottom
 
         # Only yield to the player (on foot or in their car) while they occupy the road.
         if not occupant_rect.colliderect(road):
@@ -2832,7 +2914,7 @@ class Game:
         occupant_half_length = occupant_rect.height / 2
         overlap_distance = bus.original_image.get_height() / 2 + occupant_half_length
         braking_distance = bus.speed ** 2 / (2 * max(1, bus.friction))
-        stop_distance = overlap_distance + braking_distance + 80
+        stop_distance = overlap_distance + braking_distance + 150
         if forward_distance < -overlap_distance or forward_distance > stop_distance:
             return False
 
