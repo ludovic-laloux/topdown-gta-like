@@ -7,7 +7,7 @@ BG_GRASS_COLOR = (120, 150, 80)
 FIELD_COLOR = (100,140,20)
 ROAD_COLOR = (80,80,70)
 ZOOM = 0.75 # normal = 0.75
-PLAYER_SPEED = 180 # normal = 180
+PLAYER_SPEED = 1800 # normal = 180
 ENTER_DISTANCE = 180
 DAY_LENGTH_SECONDS = 120
 START_HOUR = 13.0
@@ -712,11 +712,7 @@ class World:
             "graphics/sugar_refinery.png"
         ).convert_alpha()
 
-        # house_2 is 700 world pixels tall, so 1500 makes the refinery a little over twice as tall.
-        self.sugar_refinery_image = pygame.transform.smoothscale(
-            self.sugar_refinery_image, (1000, 1500)
-        )
-        self.sugar_refinery_pos = (8380, 5000)
+        self.sugar_refinery_pos = (8596, 5000)
         self.sugar_refinery_rect = self.sugar_refinery_image.get_rect(
             topleft=self.sugar_refinery_pos
         )
